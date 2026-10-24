@@ -1,0 +1,54 @@
+:root {
+  --bg: #17130f;
+  --card: #241d17;
+  --text: #f5efe6;
+  --muted: #a89a8a;
+  --accent: #f0883e;
+  --good: #4cc38a;
+  --bad: #ef4f4f;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex;
+  justify-content: center;
+}
+main { width: 100%; max-width: 560px; padding: 24px 16px; }
+h1 { margin: 0 0 4px; font-size: 2.2rem; }
+h1 span { color: var(--accent); }
+.sub { color: var(--muted); margin: 0 0 24px; }
+.card { background: var(--card); border-radius: 14px; padding: 20px; margin-bottom: 16px; }
+input, button {
+  font: inherit;
+  width: 100%;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid #3a2f25;
+}
+input { background: #120e0b; color: var(--text); margin-bottom: 12px; }
+button { background: var(--accent); color: #1a0f05; font-weight: 700; border: none; cursor: pointer; }
+button:disabled { opacity: .4; cursor: not-allowed; }
+button.secondary { background: #3a2f25; color: var(--text); }
+.hidden { display: none !important; }
+.error { color: var(--bad); min-height: 1.2em; }
+.big { font-size: 1.6rem; font-weight: 800; text-align: center; margin: 8px 0; }
+.status-down { color: var(--good); }
+.status-up { color: var(--muted); }
+.roasted { background: var(--bad); color: #fff; animation: pulse 0.8s infinite alternate; }
+@keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.35); } }
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; }
+.debug { margin-top: 16px; }
+.debug button { margin-bottom: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 1.1rem; }
+td, th { padding: 10px 8px; text-align: left; border-bottom: 1px solid #3a2f25; }
+th { color: var(--muted); font-weight: 600; font-size: .9rem; }
+td.num, th.num { text-align: right; }
+tr.roasted td { background: rgba(239, 79, 79, .25); }
+.timer { font-size: 3rem; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
+.url { font-family: ui-monospace, monospace; word-break: break-all; color: var(--accent); }
+.roasted .sub { color: #fff; }

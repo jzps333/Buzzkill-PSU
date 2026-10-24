@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzkill</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <h1>Buzz<span>kill</span></h1>
+  <p class="sub">Pick up your phone and the whole room hears about it.</p>
+
+  <!-- 1. pick a name -->
+  <section id="join" class="card">
+    <input id="name" placeholder="Your name" maxlength="20" autocomplete="off">
+    <button id="joinBtn">Join</button>
+    <p class="error" id="joinError"></p>
+  </section>
+
+  <!-- 2. allow motion sensors (iPhone needs a tap for this) -->
+  <section id="sensors" class="card hidden">
+    <p>Hi <b class="me"></b>! Buzzkill needs your motion sensors to know when you pick up your phone.</p>
+    <button id="sensorBtn">Allow motion &amp; start</button>
+    <p class="error" id="sensorError"></p>
+  </section>
+
+  <!-- 3. in the game -->
+  <section id="game" class="hidden">
+    <div class="card" id="statusCard">
+      <div class="big" id="status">Put your phone face-down</div>
+      <p class="sub" id="hint" style="text-align:center;margin:0">Keep this page open. Leaving it counts as a pickup.</p>
+    </div>
+    <div class="card">
+      <div class="row">
+        <div><div class="sub" style="margin:0">Score</div><div class="big" id="score">0</div></div>
+        <div><div class="sub" style="margin:0">Rank</div><div class="big" id="rank">-</div></div>
+        <div><div class="sub" style="margin:0">Pickups</div><div class="big" id="pickups">0</div></div>
+      </div>
+      <p class="sub" id="phase" style="text-align:center;margin:8px 0 0"></p>
+    </div>
+  </section>
+
+  <!-- add ?debug=1 to the URL to test without real phones -->
+  <section id="debug" class="card debug hidden">
+    <p class="sub">Debug controls</p>
+    <button class="secondary" data-send="putdown">Fake: face-down</button>
+    <button class="secondary" data-send="pickup">Fake: pick up</button>
+    <button class="secondary" data-send="shake">Fake: shake</button>
+  </section>
+</main>
+<script src="/static/phone.js"></script>
+</body>
+</html>

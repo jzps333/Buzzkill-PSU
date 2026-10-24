@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzkill Board</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main style="max-width:760px">
+  <h1>Buzz<span>kill</span></h1>
+  <p class="sub">Join on your phone: <span class="url" id="url"></span></p>
+
+  <section class="card" id="lobby">
+    <p id="readyCount" class="big">0 players ready</p>
+    <div class="row">
+      <input id="minutes" type="number" min="1" max="180" value="25" aria-label="Minutes">
+      <button id="startBtn" disabled>Start session</button>
+    </div>
+    <button class="secondary" id="voiceBtn">Test speaker</button>
+    <p class="error" id="error"></p>
+  </section>
+
+  <section class="card hidden" id="running">
+    <div class="timer" id="timer">25:00</div>
+  </section>
+
+  <section class="card hidden" id="ended">
+    <p class="big" id="winner"></p>
+    <button id="resetBtn">New round</button>
+  </section>
+
+  <section class="card">
+    <table>
+      <thead><tr><th>#</th><th>Player</th><th>Phone</th><th class="num">Pickups</th><th class="num">Score</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+</main>
+<script src="/static/board.js"></script>
+</body>
+</html>
