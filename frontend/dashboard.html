@@ -155,6 +155,7 @@
   <script src="config.js"></script>
   <script src="device.js"></script>
   <script src="buzz.js"></script>
+  <script src="stats.js"></script>
   <script>
     const $ = id => document.getElementById(id);
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -280,6 +281,27 @@
       if (none) wrap.append(el("p", "stats-hint", "These fill in after you finish a game on your phone. (Hosting doesn't count.)"));
       else if (!stretches.length) wrap.append(el("p", "stats-hint", "Focus times start counting from your next game."));
       $("stats").replaceWith(wrap);
+      if (!none) againstFriends(wrap);
+    }
+
+    // Wins and rivals, from every finished game you shared with others (stats.js)
+    async function againstFriends(wrap) {
+      const { data: { session } } = await sb.auth.getSession();
+      const x = await BuzzStats.load().then(r => r.players.get(session?.user?.id)).catch(() => null);
+      if (!x) return;
+      const grid = el("div", "stats");
+      for (const [name, value, note] of [
+        ["Games won", `${x.wins}`, `${Math.round(x.winRate * 100)}% of your games (fewest pickups)`],
+        ["Fastest first pickup", x.fastestFold == null ? "Never" : BuzzStats.time(x.fastestFold), "from the start of a game"],
+        ["Most played with", x.mostPlayedWith?.name ?? "—", x.mostPlayedWith ? `${x.mostPlayedWith.n} games together` : ""],
+        ["Beaten most", x.mostWonAgainst?.name ?? "—", x.mostWonAgainst ? `${x.mostWonAgainst.n} wins against them` : ""],
+      ]) {
+        const box = el("div", "stat");
+        box.append(el("b", "", value), el("span", "", name));
+        if (note) box.append(el("small", "", note));
+        grid.append(box);
+      }
+      wrap.append(el("p", "stats-label", "Against your friends"), grid);
     }
 
     function showActive(title, sub, button, href) {

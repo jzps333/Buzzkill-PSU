@@ -78,6 +78,28 @@
 
     .note { margin: 14px 0 0; font-size: 13px; color: var(--ink-2); }
 
+    /* Records */
+    .records { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    @media (max-width: 900px) { .records { grid-template-columns: repeat(2, 1fr); } }
+    .rec { padding: 16px; border-radius: 18px; background: #FBF8EF; }
+    .rec .t { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: var(--ink-2); }
+    .rec .v { margin: 6px 0 0; font-size: 26px; line-height: 1.05; font-weight: 800; letter-spacing: -.6px; font-variant-numeric: tabular-nums; }
+    .rec .w { margin: 4px 0 0; font-size: 14px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rec .n { margin: 2px 0 0; font-size: 12px; color: var(--ink-2); }
+
+    /* Click a player: their stats */
+    tbody tr.row { cursor: pointer; }
+    tbody tr.row:hover td { background: #F4EEDC; }
+    tbody tr.row.open td { background: #F4EEDC; }
+    tr.me.row:hover td, tr.me.open td { background: #F3DD8A; }
+    td.chev { width: 28px; color: var(--ink-2); }
+    tr.detail td { padding: 0; background: transparent; white-space: normal; }
+    .pstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 6px 4px 12px; }
+    @media (max-width: 720px) { .pstats { grid-template-columns: repeat(2, 1fr); } }
+    .pstat { padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--white); }
+    .pstat b { display: block; font-size: 18px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pstat span { font-size: 12px; font-weight: 700; color: var(--ink-2); }
+
     @media (max-width: 720px) {
       .head { flex-direction: column; text-align: center; padding: 26px 20px; }
       .head .bee { width: 76px; }
@@ -128,9 +150,15 @@
 
     <section class="podium" id="podium" aria-label="Top three"></section>
 
+    <section class="card" id="recordsCard" hidden>
+      <h2>Records</h2>
+      <p>The best (and worst) of every finished game.</p>
+      <div class="records" id="records"></div>
+    </section>
+
     <section class="card">
       <h2>Everyone</h2>
-      <p>Less picking up. More showing up.</p>
+      <p>Less picking up. More showing up. Tap a player to see their stats.</p>
       <div class="scroll">
         <table>
           <thead>
@@ -141,19 +169,21 @@
               <th class="n">Clean</th>
               <th class="n hide-sm">Games</th>
               <th class="n hide-sm">Minutes</th>
+              <th class="chev" aria-hidden="true"></th>
             </tr>
           </thead>
-          <tbody id="rows"><tr><td colspan="6" class="empty">Loading the leaderboard…</td></tr></tbody>
+          <tbody id="rows"><tr><td colspan="7" class="empty">Loading the leaderboard…</td></tr></tbody>
         </table>
       </div>
       <p class="note" id="sampleNote"></p>
-      <p class="note">Guests aren't ranked. <a href="/login?tab=signup">Make an account</a> to get on the board.</p>
+      <p class="note">Focus = time without touching your phone. A win is the fewest pickups in a game. Guests aren't ranked. <a href="/login?tab=signup">Make an account</a> to get on the board.</p>
     </section>
   </main>
 
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
   <script src="buzz.js"></script>
+  <script src="stats.js"></script>
   <script>
     const $ = id => document.getElementById(id);
     // textContent everywhere, so a username like <script> shows as words instead of running as code
@@ -180,6 +210,8 @@
       for (const [p, place] of [[top[1], 2], [top[0], 1], [top[2], 3]]) {
         if (!p) continue;
         const spot = el("div", `spot p${place}` + (p.id === me ? " me" : ""));
+        spot.style.cursor = "pointer";
+        spot.onclick = () => { if (openId !== p.id) toggle(p.id); document.querySelector(`#rows tr[data-id="${CSS.escape(p.id)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }); };
         spot.append(
           el("span", "place", place),
           el("p", "name", p.username + (p.sample ? " (sample)" : "")),
@@ -191,11 +223,68 @@
       }
     }
 
+    // ---------- Stats for every player (heavier, so every 30 s) ----------
+    let stats = null, openId = null;
+    async function loadStats() {
+      try { stats = await BuzzStats.load(); } catch { return; }
+      const cards = stats.records.map(r => {
+        const c = el("div", "rec");
+        c.append(el("p", "t", `${r.icon} ${r.title}`), el("p", "v", r.value), el("p", "w", r.who), el("p", "n", r.note));
+        return c;
+      });
+      $("records").replaceChildren(...cards);
+      $("recordsCard").hidden = !cards.length;
+      if (openId) showDetail(openId);
+    }
+    loadStats();
+    setInterval(loadStats, 30000);
+
+    function detailRow(id) {
+      const s = stats?.players.get(id);
+      const tr = el("tr", "detail");
+      const td = el("td");
+      td.colSpan = 7;
+      const box = el("div", "pstats");
+      const items = !stats ? [["Loading…", "stats"]] : !s ? [["No stats yet", "sample player, or no finished games"]] : [
+        [`${s.wins} of ${s.games}`, `games won (${Math.round(s.winRate * 100)}%)`],
+        [BuzzStats.time(s.longestFocus), "longest focus"],
+        [s.fastestFold == null ? "Never folded" : BuzzStats.time(s.fastestFold), "fastest first pickup"],
+        [BuzzStats.time(s.minutes * 60), "time studied"],
+        [s.mostPlayedWith ? s.mostPlayedWith.name : "–", s.mostPlayedWith ? `most played with (${s.mostPlayedWith.n} games)` : "most played with"],
+        [s.mostWonAgainst ? s.mostWonAgainst.name : "–", s.mostWonAgainst ? `beaten most (${s.mostWonAgainst.n} times)` : "beaten most"],
+        [s.nemesis ? s.nemesis.name : "None yet", s.nemesis ? `nemesis (lost ${s.nemesis.n}, won ${s.nemesis.wins})` : "nemesis"],
+        [`${s.bestCleanStreak}`, `best clean streak${s.cleanStreak ? ` (now ${s.cleanStreak})` : ""}`],
+      ];
+      for (const [v, label] of items) { const b = el("div", "pstat"); b.append(el("b", "", v), el("span", "", label)); box.append(b); }
+      td.append(box);
+      tr.append(td);
+      return tr;
+    }
+    function showDetail(id) {
+      document.querySelectorAll("#rows tr.detail").forEach(r => r.remove());
+      document.querySelectorAll("#rows tr.open").forEach(r => { r.classList.remove("open"); r.lastChild.textContent = "▾"; });
+      const row = document.querySelector(`#rows tr[data-id="${CSS.escape(id)}"]`);
+      if (!row) return;
+      row.classList.add("open");
+      row.lastChild.textContent = "▴";
+      row.after(detailRow(id));
+    }
+    function toggle(id) {
+      openId = openId === id ? null : id;
+      if (openId) showDetail(openId);
+      else showDetail("");
+    }
+
     function renderRows(data) {
       const rows = $("rows");
       rows.replaceChildren();
       data.forEach((p, i) => {
-        const tr = el("tr", p.id === me ? "me" : "");
+        const tr = el("tr", "row" + (p.id === me ? " me" : ""));
+        tr.dataset.id = p.id;
+        tr.tabIndex = 0;
+        tr.setAttribute("aria-label", `${p.username}: show stats`);
+        tr.onclick = () => toggle(p.id);
+        tr.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(p.id); } };
         const name = el("td", "player", p.username);
         if (p.id === me) name.append(el("span", "you", "You"));
         if (p.sample) name.append(el("span", "sample", "Sample"));
@@ -206,9 +295,11 @@
           el("td", "n", `${fmt(p.clean_pct)}%`),
           el("td", "n hide-sm", p.games),
           el("td", "n hide-sm", fmt(p.minutes_played)),
+          el("td", "chev", "▾"),
         );
         rows.append(tr);
       });
+      if (openId) showDetail(openId);
     }
 
     function message(text, link) {

@@ -59,11 +59,12 @@ journalctl --user -u buzzkill-speaker -u buzzkill -f
 **The demo (about 60 seconds)**
 1. **Tap** the brick → "New game. Your PIN is ..."
 2. Everyone taps the NFC sticker / scans the QR / types the PIN → **tap** again to hear who's in.
-3. 4+ players in → **double tap** → "Game on. Phones down." Phones face down.
+3. When the 4th player joins, the brick says "4 players in. Starting in 5 seconds." and starts by itself. Phones face down.
 4. One person **picks up** their phone → the JBL roasts them by name.
 5. They **shake** the phone → the roast stops.
 6. **Tap** the brick → time left + scoreboard.
-7. **Hold** the brick for 3 seconds → "Game over." Show the results on a phone.
+7. **Triple tap** the brick → "Game over. Sam wins with zero pickups." Show the results on a phone.
+8. Want another round? **Tap once** → new game. Everyone's results page shows "Next game is ready → Join".
 
 **If something breaks mid-demo**
 - No sound: `bluetoothctl connect 18:90:67:DE:D2:E1`
@@ -111,10 +112,11 @@ journalctl --user -u buzzkill-speaker -u buzzkill -f    # live logs
 | **Tap** | "New game. Your PIN is 4, F, 2, A, 9, C." (**double tap** = teams game) |
 | Players tap the NFC sticker, scan the QR, or type the PIN at buzzkill.study | |
 | **Tap** (before the game starts) | the PIN + who's in, every time: "Need 2 more to start." / "Double tap to start." |
-| **Double tap** (4+ players) | "Game on. Phones down. Good luck." |
+| 4th player joins | "4 players in. Starting in 5 seconds. Phones face down." then "Game on." (or **double tap** to start yourself; `AUTO_START` in `.env`, 0 = off) |
 | Someone picks up their phone | an AI roast on loop until they shake their phone |
 | **Tap** during the game | time left + scoreboard: "Focus time, 18 minutes left. Alex is losing, with 3 pickups. Sam is still clean." |
-| **Hold 3 s** | "Game over. Check your phones for results." (or closes a game that never started) |
+| **Triple tap** (or hold 3 s) | "Game over. Sam wins with zero pickups. Tap to start a new game." Before the start: closes the game |
+| **Tap** right after | a new game straight away; players' results pages show **Next game is ready → Join** |
 
 Games started from the website's `/host` page with **Buzzkill speaker** picked work with the brick too.
 

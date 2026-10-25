@@ -18,10 +18,11 @@ Buzzkill makes slipping **public, funny and a little painful**: peer pressure, o
 
 1. **Tap the brick.** It says the PIN out loud: *"New game. Your PIN is 4, F, 2, A, 9, C."*
 2. **Join from your phone:** tap the NFC sticker, scan the QR code, or type the PIN at buzzkill.study. Log in with Google, email, or as a guest. You need 4+ players.
-3. **Vote on a pomodoro** (sprint / classic / deep). Tap the brick any time to hear the PIN and who's in; **double tap** to start. Phones go face down.
+3. **Vote on a pomodoro** (sprint / classic / deep). Tap the brick any time to hear the PIN and who's in. The game starts by itself 5 seconds after the 4th player joins. Phones go face down.
 4. **Pick up your phone** (or leave the page) and you're busted: the brick roasts you on loop, by name, using your real stats.
 5. **Shake your phone** to shut it up. 10 s the first time, 30 s the second, 1 min the third...
-6. **Tap the brick** any time for the time left and the scoreboard. **Hold it** for 3 seconds to end the game.
+6. **Tap the brick** any time for the time left and the scoreboard. **Triple tap** (or hold for 3 seconds) to end the game: it says who won.
+   One more tap starts the next game, and everyone's results page shows a **Join** button for it.
 7. **Results:** titles (Iron Will, Doomscroller, First to Fold), the leaderboard, your rivals and your nemesis.
 
 **Teams mode** (double tap with no game): even teams (2v2, 3v3...), one slip busts your whole team.
