@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzkill · Why it matters</title>
+  <meta name="description" content="We switch screens every 47 seconds. What the research says about attention, and how Buzzkill helps win it back.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --cream: #FFFAEB; --honey: #F5D35A; --sand: #F4EEDC; --peach: #F7E4BF;
+      --ink: #1F1B16; --ink-2: #5E574B; --line: #EAE2CC; --white: #FFFFFF;
+      --bar: #B07A0A; --grid: #EFE8D6;
+      --green: #2F8A55; --red: #B42323;
+      --font: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100svh; background: var(--cream); color: var(--ink); font: 500 16px/1.6 var(--font); -webkit-font-smoothing: antialiased; }
+    a { color: inherit; }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+    .wrap { width: min(1040px, 100% - 32px); margin: 0 auto; }
+
+    /* Nav (same as the other pages) */
+    .nav { display: flex; align-items: center; justify-content: space-between; height: 72px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; text-decoration: none; }
+    .brand-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--honey); display: grid; place-items: center; }
+    .nav-links { display: flex; align-items: center; gap: 22px; font-size: 14px; font-weight: 700; }
+    .nav-links a:not(.pill) { text-decoration: none; }
+    .nav-links a:not(.pill):hover { text-decoration: underline; }
+    .pill { display: inline-flex; align-items: center; height: 38px; padding: 0 16px; border-radius: 999px; background: var(--ink); color: var(--white); font-size: 14px; font-weight: 700; text-decoration: none; }
+    .pill:hover { background: #3A332A; }
+    @media (max-width: 640px) { .nav-links a:not(.pill) { display: none; } }
+
+    main { padding: 8px 0 72px; }
+    section { margin-top: 56px; }
+    .eyebrow { margin: 0 0 8px; font-size: 12px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; color: #8A6A10; }
+    h2 { margin: 0 0 10px; font-size: clamp(26px, 4vw, 36px); line-height: 1.12; font-weight: 800; letter-spacing: -.8px; }
+    .lede { margin: 0; max-width: 62ch; color: var(--ink-2); }
+    .src { display: block; margin-top: 10px; font-size: 13px; color: var(--ink-2); }
+
+    /* Hero */
+    .hero { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 24px; padding: 44px 44px; border-radius: 28px; background: var(--honey); }
+    .hero h1 { margin: 0 0 12px; font-size: clamp(36px, 6vw, 60px); line-height: 1.02; font-weight: 800; letter-spacing: -1.6px; }
+    .hero p { margin: 0; max-width: 52ch; font-size: 17px; color: #3E3420; }
+    .hero .bee { width: 170px; }
+    @media (max-width: 720px) { .hero { grid-template-columns: 1fr; padding: 32px 24px; } .hero .bee { width: 120px; justify-self: center; grid-row: 1; } }
+
+    /* Chart card */
+    .card { padding: 28px; border: 1px solid var(--line); border-radius: 24px; background: var(--white); }
+    .chart-card { margin-top: 22px; }
+    .chart-title { margin: 0; font-size: 18px; font-weight: 800; }
+    .chart-sub { margin: 2px 0 18px; font-size: 14px; color: var(--ink-2); }
+    .chart { position: relative; }
+    .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .chart .bar { fill: var(--bar); }
+    .chart .hit { fill: transparent; cursor: default; }
+    .chart .hit:hover + .bar, .chart .bar.on { fill: #8F6206; }
+    .chart .gridline { stroke: var(--grid); stroke-width: 1; }
+    .chart .axis { fill: var(--ink-2); font: 600 12px var(--font); }
+    .chart .val { fill: var(--ink); font: 800 15px var(--font); }
+    .chart .xl { fill: var(--ink); font: 700 13px var(--font); }
+    .tip { position: absolute; pointer-events: none; min-width: 200px; max-width: 260px; padding: 10px 12px; border-radius: 12px; background: var(--ink); color: var(--white); font-size: 13px; line-height: 1.45; box-shadow: 0 8px 24px rgba(31,27,22,.18); transform: translate(-50%, calc(-100% - 10px)); }
+    .tip b { display: block; font-size: 14px; }
+    details { margin-top: 14px; font-size: 14px; }
+    summary { cursor: pointer; font-weight: 700; }
+    table { margin-top: 8px; border-collapse: collapse; width: 100%; max-width: 520px; }
+    th, td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+    td.num { font-variant-numeric: tabular-nums; }
+    .note { margin: 16px 0 0; padding: 12px 16px; border-radius: 14px; background: var(--sand); font-size: 14px; }
+
+    /* Stat tiles */
+    .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 22px; }
+    @media (max-width: 860px) { .tiles { grid-template-columns: 1fr; } }
+    .tile { padding: 24px; border-radius: 22px; background: var(--white); border: 1px solid var(--line); }
+    .tile .big { margin: 0; font-size: clamp(40px, 6vw, 54px); line-height: 1; font-weight: 800; letter-spacing: -1.5px; font-variant-numeric: tabular-nums; }
+    .tile .big small { font-size: .45em; letter-spacing: -.3px; }
+    .tile h3 { margin: 12px 0 6px; font-size: 16px; font-weight: 800; }
+    .tile p { margin: 0; font-size: 14px; color: var(--ink-2); }
+
+    /* Myth */
+    .myth { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start; padding: 28px; border-radius: 24px; background: var(--peach); }
+    .myth .x { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; background: var(--ink); color: var(--white); font-size: 28px; font-weight: 800; }
+    .myth h2 { font-size: clamp(22px, 3.4vw, 30px); }
+    .myth p { margin: 0 0 8px; max-width: 70ch; }
+    @media (max-width: 560px) { .myth { grid-template-columns: 1fr; } }
+
+    /* What helps */
+    .helps { display: grid; gap: 14px; margin-top: 22px; }
+    .help { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-radius: 22px; overflow: hidden; border: 1px solid var(--line); background: var(--white); }
+    .help > div { padding: 22px 24px; }
+    .help .ours { background: var(--sand); }
+    .help .tag { margin: 0 0 6px; font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ink-2); }
+    .help h3 { margin: 0 0 6px; font-size: 18px; font-weight: 800; }
+    .help p { margin: 0; font-size: 14px; color: var(--ink-2); }
+    @media (max-width: 720px) { .help { grid-template-columns: 1fr; } }
+
+    /* So far */
+    .sofar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 22px; }
+    @media (max-width: 720px) { .sofar { grid-template-columns: 1fr; } }
+    .sofar .tile { background: var(--honey); border: 0; }
+    .sofar .tile p { color: #3E3420; }
+
+    .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+    .btn { display: inline-flex; align-items: center; height: 50px; padding: 0 22px; border-radius: 14px; background: var(--ink); color: var(--white); font-weight: 800; text-decoration: none; }
+    .btn.ghost { background: var(--white); color: var(--ink); border: 2px solid var(--ink); }
+
+    .sources ol { margin: 14px 0 0; padding-left: 20px; font-size: 14px; color: var(--ink-2); }
+    .sources li { margin-bottom: 6px; }
+
+    footer { margin-top: 64px; padding: 26px 0 36px; border-top: 1px solid var(--line); }
+    footer .wrap { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3c-3.6 0-6 2.7-6 6.3V14l-2 3h16l-2-3V9.3C18 5.7 15.6 3 12 3z" fill="#1F1B16"/><circle cx="12" cy="19.5" r="2.2" fill="#1F1B16"/></svg>
+        </span>
+        Buzzkill
+      </a>
+      <div class="nav-links">
+        <a href="/#how">How it works</a>
+        <a href="/leaderboard">Leaderboard</a>
+        <a class="pill" href="/">Join a game</a>
+      </div>
+    </nav>
+  </div>
+
+  <main class="wrap">
+    <!-- Hero -->
+    <div class="hero">
+      <div>
+        <p class="eyebrow">Why Buzzkill exists</p>
+        <h1>Your focus didn't break. It got taken.</h1>
+        <p>We now switch screens about every 47 seconds. A generation is growing up with a phone that's built to pull them away.
+          Buzzkill is our attempt to win some of that attention back, together.</p>
+      </div>
+      <div class="bee" id="bee"></div>
+    </div>
+
+    <!-- 1. The trend -->
+    <section aria-labelledby="trend">
+      <p class="eyebrow">The trend</p>
+      <h2 id="trend">We stay on one screen for less than a minute</h2>
+      <p class="lede">For two decades, Gloria Mark's team at UC Irvine has timed how long people stay on one screen before switching to something else.
+        The number keeps falling.</p>
+
+      <div class="card chart-card">
+        <p class="chart-title">Average time on one screen before switching</p>
+        <p class="chart-sub">Seconds, from studies of people at work (Gloria Mark, UC Irvine)</p>
+        <div class="chart" id="chart"></div>
+        <details>
+          <summary>Show as a table</summary>
+          <table>
+            <thead><tr><th>When</th><th>Average time on one screen</th></tr></thead>
+            <tbody>
+              <tr><td>2004</td><td class="num">about 150 seconds (2½ minutes)</td></tr>
+              <tr><td>2012</td><td class="num">75 seconds</td></tr>
+              <tr><td>Recent years</td><td class="num">47 seconds</td></tr>
+            </tbody>
+          </table>
+        </details>
+        <p class="note"><b>What this measures:</b> how long people stay on one screen before switching, not a hard limit of the brain.
+          That's the hopeful part: it's a habit shaped by our surroundings, and habits can be retrained.</p>
+      </div>
+    </section>
+
+    <!-- 2. Stats -->
+    <section aria-labelledby="cost">
+      <p class="eyebrow">The cost</p>
+      <h2 id="cost">Every pickup costs more than it looks</h2>
+      <div class="tiles">
+        <div class="tile">
+          <p class="big"><span data-count="46">46</span><small>%</small></p>
+          <h3>of US teens are online "almost constantly"</h3>
+          <p>Up from 24% in 2014–15. Older teens are the most connected.</p>
+          <span class="src">Pew Research Center, 2024</span>
+        </div>
+        <div class="tile">
+          <p class="big"><span data-count="23">23</span><small> min</small></p>
+          <h3>to get back to a task after an interruption</h3>
+          <p>On average 23 minutes 15 seconds, usually after doing two other things first.</p>
+          <span class="src">Gloria Mark, UC Irvine</span>
+        </div>
+        <div class="tile">
+          <p class="big"><span data-count="800">800</span><small> people</small></p>
+          <h3>did worse with their phone on the desk</h3>
+          <p>Even switched off and face down. The ones whose phone was in another room scored best.</p>
+          <span class="src">Ward et al., UT Austin, 2017</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Myth -->
+    <section aria-labelledby="myth">
+      <div class="myth">
+        <div class="x" aria-hidden="true">✕</div>
+        <div>
+          <p class="eyebrow">Myth check</p>
+          <h2 id="myth">No, you don't have the attention span of a goldfish</h2>
+          <p>The famous "8 seconds, shorter than a goldfish" stat came from a 2015 marketing report that cited a website no one could trace back to real research.
+            Attention researchers say our basic ability to focus hasn't measurably changed.</p>
+          <p>What changed is everything around us: more pings, more tabs, and a phone within reach all day.
+            So the fix isn't a better brain. It's a better environment.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. What helps -->
+    <section aria-labelledby="helps">
+      <p class="eyebrow">Winning it back</p>
+      <h2 id="helps">What the research says helps, and how Buzzkill uses it</h2>
+      <div class="helps">
+        <div class="help">
+          <div>
+            <p class="tag">Research</p>
+            <h3>Distance beats willpower</h3>
+            <p>Just having your phone nearby uses up focus, because part of your brain is busy not checking it. Out of reach did best.</p>
+          </div>
+          <div class="ours">
+            <p class="tag">Buzzkill</p>
+            <h3>Phones go face down, and lifting one costs you</h3>
+            <p>Everyone's phone sits face down for the whole session. The moment one moves, the brick knows.</p>
+          </div>
+        </div>
+        <div class="help">
+          <div>
+            <p class="tag">Research</p>
+            <h3>Phone-free rooms help struggling students most</h3>
+            <p>In a randomized trial at 10 colleges in India, phone-free lectures raised grades slightly (0.07 standard deviations), with the biggest gains for students who were behind.</p>
+          </div>
+          <div class="ours">
+            <p class="tag">Buzzkill</p>
+            <h3>A phone-free table you choose</h3>
+            <p>No teacher, no ban: your study group agrees to it, and the brick keeps everyone honest.</p>
+          </div>
+        </div>
+        <div class="help">
+          <div>
+            <p class="tag">Research</p>
+            <h3>Interruptions are expensive</h3>
+            <p>Each switch can cost over 20 minutes of getting back on track, so long, protected blocks of work matter.</p>
+          </div>
+          <div class="ours">
+            <p class="tag">Buzzkill</p>
+            <h3>Pomodoro blocks with real breaks</h3>
+            <p>The group votes on focus and break lengths. Breaks don't count, so you can check your phone without guilt.</p>
+          </div>
+        </div>
+        <div class="help">
+          <div>
+            <p class="tag">Our idea</p>
+            <h3>Make slipping a little harder, and a little public</h3>
+            <p>Not a study result: this is the bet Buzzkill is built on. A phone pickup is easy and private. We make it take effort and make it visible.</p>
+          </div>
+          <div class="ours">
+            <p class="tag">Buzzkill</p>
+            <h3>Shake to stop the roast</h3>
+            <p>Pick up your phone and the brick roasts you by name. You shake for 10 seconds to silence it, longer every time after.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. So far -->
+    <section aria-labelledby="sofar">
+      <p class="eyebrow">Buzzkill so far</p>
+      <h2 id="sofar">We measure it, so you can see it change</h2>
+      <p class="lede">We can't claim Buzzkill restores anyone's attention span yet. What we can do is measure: every finished game tracks pickups per hour,
+        so you and your group can watch your own number go down.</p>
+      <div class="sofar" id="sofarTiles">
+        <div class="tile"><p class="big" id="sMinutes">–</p><h3>minutes of focused studying</h3><p>in finished Buzzkill games</p></div>
+        <div class="tile"><p class="big" id="sPlayers">–</p><h3>players on the board</h3><p>with an account</p></div>
+        <div class="tile"><p class="big" id="sRate">–</p><h3>pickups per hour, on average</h3><p>lower is better</p></div>
+      </div>
+      <div class="cta">
+        <a class="btn" href="/">Start a study session</a>
+        <a class="btn ghost" href="/leaderboard">See the leaderboard</a>
+      </div>
+    </section>
+
+    <!-- Sources -->
+    <section class="sources" aria-labelledby="src">
+      <h2 id="src" style="font-size: 22px;">Sources</h2>
+      <ol>
+        <li>Gloria Mark (UC Irvine) on screen-switching: 2½ minutes in 2004, 75 seconds in 2012, 47 seconds recently.
+          <a href="https://www.universityofcalifornia.edu/news/how-sharpen-your-attention-and-meet-your-goals-2024" target="_blank" rel="noopener">UC Newsroom, 2024</a></li>
+        <li>Gloria Mark on resuming interrupted work (23 minutes 15 seconds).
+          <a href="https://news.gallup.com/businessjournal/23146/too-many-interruptions-work.aspx" target="_blank" rel="noopener">Gallup interview</a></li>
+        <li>Teens online "almost constantly": 46% in 2024, 24% in 2014–15.
+          <a href="https://www.pewresearch.org/internet/2024/12/12/teens-social-media-and-technology-2024/" target="_blank" rel="noopener">Pew Research Center, Teens, Social Media and Technology 2024</a></li>
+        <li>Ward, Duke, Gneezy & Bos, "Brain Drain: The Mere Presence of One's Own Smartphone Reduces Available Cognitive Capacity," Journal of the Association for Consumer Research, 2017.
+          <a href="https://doi.org/10.1086/691462" target="_blank" rel="noopener">doi.org/10.1086/691462</a></li>
+        <li>Randomized phone-free lectures at 10 colleges in India: grades up 0.07 SD, largest gains for struggling students.
+          <a href="https://knowledge.wharton.upenn.edu/?p=39549" target="_blank" rel="noopener">Knowledge at Wharton</a></li>
+        <li>Why the "goldfish" attention-span stat is a myth.
+          <a href="https://internet.psych.wisc.edu/wp-content/uploads/532-Master/532-UnitPages/Unit-09/Goldfish_MythBusting.pdf" target="_blank" rel="noopener">Wall Street Journal, via UW–Madison</a></li>
+      </ol>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span class="brand">Buzzkill.</span>
+      <span>Made at HackPSU, fall 2026.</span>
+    </div>
+  </footer>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="buzz.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    Buzz.bee($("bee"), "worried");
+    $("bee").classList.add("bz-float");
+
+    // ---------- Chart: time on one screen (single series, so no legend; the title names it) ----------
+    const DATA = [
+      { when: "2004", secs: 150, label: "2½ min", note: "Small study of information workers at one company" },
+      { when: "2012", secs: 75, label: "75 s", note: "Half the 2004 time" },
+      { when: "Recent years", secs: 47, label: "47 s", note: "Under a minute before switching screens" },
+    ];
+    // Drawn at the chart's real width (not scaled), so the labels stay readable on phones
+    function drawChart() {
+      const W = Math.max(300, $("chart").clientWidth || 640), H = W < 520 ? 250 : 300, L = 44, R = 12, T = 30, B = 34, max = 180;
+      const plotW = W - L - R, plotH = H - T - B;
+      const y = s => T + plotH - (s / max) * plotH;
+      const slot = plotW / DATA.length, barW = Math.min(110, slot * 0.46);
+      let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Average time on one screen before switching: about 150 seconds in 2004, 75 seconds in 2012, 47 seconds in recent years.">`;
+      for (const s of [0, 60, 120, 180]) {
+        svg += `<line class="gridline" x1="${L}" x2="${W - R}" y1="${y(s)}" y2="${y(s)}"/>`;
+        svg += `<text class="axis" x="${L - 8}" y="${y(s) + 4}" text-anchor="end">${s}s</text>`;
+      }
+      DATA.forEach((d, i) => {
+        const cx = L + slot * i + slot / 2, x = cx - barW / 2, top = y(d.secs), h = y(0) - top, r = 4;
+        // rounded top corners only, flat on the baseline
+        const path = `M${x},${y(0)} L${x},${top + r} Q${x},${top} ${x + r},${top} L${x + barW - r},${top} Q${x + barW},${top} ${x + barW},${top + r} L${x + barW},${y(0)} Z`;
+        svg += `<rect class="hit" data-i="${i}" x="${L + slot * i}" y="${T}" width="${slot}" height="${plotH}"/>`;
+        svg += `<path class="bar" data-i="${i}" d="${path}"/>`;
+        svg += `<text class="val" x="${cx}" y="${top - 8}" text-anchor="middle">${d.label}</text>`;
+        svg += `<text class="xl" x="${cx}" y="${H - 10}" text-anchor="middle">${d.when}</text>`;
+      });
+      svg += `</svg><div class="tip" id="tip" hidden></div>`;
+      $("chart").style.minHeight = H + "px";
+      $("chart").innerHTML = svg;
+
+      const tip = $("tip"), chart = $("chart");
+      chart.querySelectorAll(".hit").forEach(hit => {
+        const i = +hit.dataset.i, d = DATA[i], bar = chart.querySelector(`.bar[data-i="${i}"]`);
+        const show = () => {
+          const c = chart.getBoundingClientRect(), b = bar.getBoundingClientRect();
+          tip.innerHTML = `<b>${d.when}: ${d.label}</b>${d.secs} seconds on one screen, on average. ${d.note}.`;
+          tip.style.left = (b.left - c.left + b.width / 2) + "px";
+          tip.style.top = (b.top - c.top) + "px";
+          tip.hidden = false;
+          bar.classList.add("on");
+        };
+        const hide = () => { tip.hidden = true; bar.classList.remove("on"); };
+        hit.addEventListener("pointerenter", show);
+        hit.addEventListener("pointerleave", hide);
+        hit.addEventListener("click", show);       // tap on phones
+      });
+    }
+    drawChart();
+    let lastW = $("chart").clientWidth;
+    new ResizeObserver(() => { const w = $("chart").clientWidth; if (w !== lastW) { lastW = w; drawChart(); } }).observe($("chart"));
+
+    // ---------- Count the big numbers up when they scroll into view ----------
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const io = new IntersectionObserver(entries => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        io.unobserve(e.target);
+        if (reduce) continue;
+        const el = e.target, end = +el.dataset.count, t0 = performance.now();
+        const step = now => {
+          const p = Math.min(1, (now - t0) / 900);
+          el.textContent = Math.round(end * (1 - Math.pow(1 - p, 3)));
+          if (p < 1) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }
+    }, { threshold: 0.6 });
+    document.querySelectorAll("[data-count]").forEach(el => io.observe(el));
+
+    // ---------- Buzzkill so far: totals from the public leaderboard ----------
+    (async () => {
+      try {
+        const { data, error } = await sb.from("leaderboard").select("minutes_played, total_pickups");
+        if (error || !data || !data.length) throw error || new Error("no games yet");
+        const minutes = data.reduce((s, r) => s + Number(r.minutes_played || 0), 0);
+        const pickups = data.reduce((s, r) => s + Number(r.total_pickups || 0), 0);
+        $("sMinutes").textContent = Math.round(minutes).toLocaleString();
+        $("sPlayers").textContent = data.length.toLocaleString();
+        $("sRate").textContent = minutes > 0 ? (pickups / (minutes / 60)).toFixed(1) : "0";
+      } catch {
+        $("sofarTiles").hidden = true;      // no data (or offline): skip the tiles rather than show zeros
+      }
+    })();
+  </script>
+  <script type="module" src="companion.js"></script>
+</body>
+</html>
