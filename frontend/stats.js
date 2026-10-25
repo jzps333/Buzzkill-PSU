@@ -7,9 +7,10 @@
                              longestFocus, fastestFold, mostPlayedWith, mostWonAgainst, nemesis }
     BuzzStats.time(seconds) -> "1h 12m" / "25m" / "1m 30s" / "48s"
 
-  Focus times: the database keeps when you first picked up in each game, not every pickup, so
-    longestFocus = the longest stretch from the start of a game to your first pickup (a clean game counts in full)
-    fastestFold  = the shortest time from the start of a game to your first pickup
+  Focus = time without touching your phone: the stretches between the start of a game, each pickup
+  (results.pickup_times) and the end. Older games only saved the first pickup, so for those we use
+  start -> first pickup (a clean game counts in full).
+    longestFocus = your longest stretch    fastestFold = the shortest time from the start of a game to a first pickup
   A win = fewest pickups in a game with 2+ players (ties all count as wins).
 */
 window.BuzzStats = (() => {
@@ -24,7 +25,7 @@ window.BuzzStats = (() => {
 
   async function load() {
     const { data, error } = await sb.from("results")
-      .select("game, user_id, pickups, first_pickup_at, games!inner(start_time, end_time, status), profiles!inner(username, is_guest)")
+      .select("game, user_id, pickups, first_pickup_at, pickup_times, games!inner(start_time, end_time, status), profiles!inner(username, is_guest)")
       .eq("games.status", "ended").eq("profiles.is_guest", false)
       .limit(20000);
     if (error) throw error;
@@ -60,10 +61,18 @@ window.BuzzStats = (() => {
         if (g.rows.length > 1 && r.pickups === fewest) p.wins++;
         if (r.pickups === 0) { p.clean++; p.cleanStreak++; p.bestCleanStreak = Math.max(p.bestCleanStreak, p.cleanStreak); }
         else p.cleanStreak = 0;
-        const focus = r.pickups === 0 || !r.first_pickup_at ? dur : (new Date(r.first_pickup_at) - g.start) / 1000;
-        if (focus >= 0) p.longestFocus = Math.max(p.longestFocus ?? 0, focus);
-        if (r.pickups > 0 && r.first_pickup_at) {
-          const fold = (new Date(r.first_pickup_at) - g.start) / 1000;
+        const times = (r.pickup_times || []).map(t => new Date(t).getTime()).sort((a, b) => a - b);
+        let stretches;
+        if (r.pickups === 0) stretches = [dur];
+        else if (times.length === r.pickups) {
+          const marks = [g.start.getTime(), ...times, g.end.getTime()];
+          stretches = marks.slice(1).map((m, i) => (m - marks[i]) / 1000);
+        } else if (r.first_pickup_at) stretches = [(new Date(r.first_pickup_at) - g.start) / 1000];   // older games
+        else stretches = [];
+        for (const f of stretches) if (f >= 0) p.longestFocus = Math.max(p.longestFocus ?? 0, f);
+        const first = times.length ? times[0] : r.first_pickup_at ? new Date(r.first_pickup_at).getTime() : null;
+        if (r.pickups > 0 && first) {
+          const fold = (first - g.start) / 1000;
           if (fold >= 0) p.fastestFold = Math.min(p.fastestFold ?? Infinity, fold);
         }
         for (const o of g.rows) {
@@ -99,7 +108,7 @@ window.BuzzStats = (() => {
     if (list.length) {
       // Ties (e.g. everyone with a clean game has the same longest focus) go to the more consistent player
       const lf = best(list.filter(p => p.longestFocus != null), p => p.longestFocus + p.clean / 1e3);
-      if (lf) records.push({ icon: "🧘", title: "Longest focus", who: lf.name, value: time(lf.longestFocus), note: "from the start to the first pickup" });
+      if (lf) records.push({ icon: "🧘", title: "Longest focus", who: lf.name, value: time(lf.longestFocus), note: "without touching their phone" });
       const ff = best(list.filter(p => p.fastestFold != null), p => -p.fastestFold + p.pickups / 1e3);
       if (ff) records.push({ icon: "🫠", title: "Fastest fold", who: ff.name, value: time(ff.fastestFold), note: "start of a game to first pickup" });
       const mg = best(list, p => p.games + p.minutes / 1e6);

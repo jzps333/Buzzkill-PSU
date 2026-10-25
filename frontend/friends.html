@@ -97,6 +97,11 @@
         <p class="msg" id="addMsg"></p>
       </div>
 
+      <div class="card" id="recentCard" hidden>
+        <h2>Recently played with</h2>
+        <div id="recent"></div>
+      </div>
+
       <div class="card" id="incomingCard" hidden>
         <h2>Requests <span class="badge" id="incomingCount"></span></h2>
         <div id="incoming"></div>
@@ -168,6 +173,8 @@
         button("Cancel", "light", () => remove(r.id)),
       ])));
 
+      loadRecent(new Set(ids));
+
       // Friends + you, ranked by fewest pickups per hour (no games yet = bottom)
       const people = friends.map(r => ({ id: other(r), fid: r.id })).concat({ id: me });
       people.sort((a, b) => (stat(a.id)?.pickups_per_hour ?? Infinity) - (stat(b.id)?.pickups_per_hour ?? Infinity));
@@ -185,6 +192,43 @@
         const div = row(isMe ? `${name(me)} (you)` : name(p.id), line, isMe ? [] : [removeButton(p.fid)], i + 1);
         if (isMe) div.classList.add("me");
         return div;
+      }));
+    }
+
+    // ---------- Recently played with: people from your last games, with a quick + Add ----------
+    async function loadRecent(known) {
+      const { data: mine } = await sb.from("results").select("game, games!inner(status, end_time)")
+        .eq("user_id", me).eq("games.status", "ended");
+      const games = (mine || []).sort((a, b) => new Date(b.games.end_time) - new Date(a.games.end_time)).slice(0, 15);
+      if (!games.length) {
+        $("recentCard").hidden = false;
+        $("recent").replaceChildren(el("p", "empty", "Play a game and the people you played with show up here, with a quick + Add."));
+        return;
+      }
+      const when = Object.fromEntries(games.map(g => [g.game, new Date(g.games.end_time)]));
+
+      const { data: others } = await sb.from("results").select("user_id, game, profiles(username, is_guest)")
+        .in("game", games.map(g => g.game)).neq("user_id", me);
+      const people = {};
+      for (const o of others || []) {
+        if (known.has(o.user_id) || !o.profiles || o.profiles.is_guest) continue;   // already friends/asked, or a guest
+        const p = people[o.user_id] ??= { name: o.profiles.username, games: 0, last: 0 };
+        p.games++;
+        p.last = Math.max(p.last, when[o.game]);
+      }
+      const list = Object.values(people).sort((a, b) => b.last - a.last).slice(0, 8);
+      $("recentCard").hidden = false;
+      if (!list.length) { $("recent").replaceChildren(el("p", "empty", "Everyone you've played with lately is already your friend.")); return; }
+      $("recent").replaceChildren(...list.map(p => {
+        const day = new Date(p.last).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        const add = button("+ Add", "", async () => {
+          add.disabled = true;
+          const { error } = await sb.rpc("send_friend_request", { p_username: p.name });
+          if (error) { add.disabled = false; alertMsg(error.message); return; }
+          add.textContent = "Sent ✓";
+          setTimeout(load, 800);
+        });
+        return row(p.name, `${p.games} game${p.games === 1 ? "" : "s"} together · last on ${day}`, [add]);
       }));
     }
 

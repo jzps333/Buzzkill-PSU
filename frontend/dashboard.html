@@ -69,8 +69,11 @@
     .stat { padding: 14px 16px; border-radius: 14px; background: var(--sand); }
     .stat b { display: block; font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
     .stat span { font-size: 13px; color: var(--ink-2); font-weight: 600; }
-    .stat b.name { font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .stats-note { margin: 10px 0 0; font-size: 12px; color: var(--ink-2); }
+    .stat small { display: block; margin-top: 2px; font-size: 12px; color: var(--ink-2); }
+    .stats-label { margin: 18px 0 0; font-size: 13px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--ink-2); }
+    .friends-pill { display: inline-flex; align-items: center; justify-content: center; line-height: 1; text-decoration: none; background: var(--honey); color: var(--ink); }
+    .friends-pill:hover { background: #E8A900; }
+    .stats-hint { margin: 12px 0 0; font-size: 13px; color: var(--ink-2); }
     .up { color: var(--green); } .down { color: var(--red); }
     .nemesis { margin-top: 12px; padding: 12px 16px; border-radius: 14px; background: var(--peach); font-size: 14px; font-weight: 600; }
     .empty { margin-top: 10px; font-size: 14px; color: var(--ink-2); }
@@ -78,7 +81,7 @@
     #msg { min-height: 1.4em; margin: 12px 0 0; text-align: center; font-size: 14px; font-weight: 700; color: var(--red); }
 
     @media (max-width: 560px) {
-      .nav-links a { display: none; }
+      .nav-links a:not(.friends-pill) { display: none; }
       .hello { padding: 18px; }
       .hello .bee { width: 58px; }
       .card { padding: 18px 16px; }
@@ -100,6 +103,7 @@
       <div class="nav-links">
         <a href="/#how">How it works</a>
         <a href="/#leaderboard">Leaderboard</a>
+        <a class="pill friends-pill" href="/friends" id="friendsBtn">Friends</a>
         <button class="pill" id="logout">Log out</button>
       </div>
     </nav>
@@ -142,7 +146,6 @@
       <p class="empty" id="stats">Loading…</p>
       <div class="nemesis" id="nemesis" hidden></div>
       <a class="btn ghost" href="/leaderboard">See the full leaderboard</a>
-      <a class="btn ghost" href="/friends" id="friendsBtn">Friends</a>
     </section>
 
     <p id="msg" role="status"></p>
@@ -190,37 +193,14 @@
         showActive(`You're in game ${playing.game}`, playing.games.status === "live" ? "Game is live. Get back in!" : "Waiting to start", "Rejoin", "/join?room=" + encodeURIComponent(playing.game));
       }
 
-      // 5. Stats (guests aren't on the leaderboard)
-      const { data: s } = await sb.from("leaderboard").select("*").eq("id", me).maybeSingle();
-      if (!s) {
-        $("stats").textContent = profile?.is_guest ? "Guest stats aren't saved. Make an account to keep them." : "No finished games yet. Go play one!";
+      // 5. Stats, worked out from your finished games
+      if (profile?.is_guest) {
+        $("stats").textContent = "Guest stats aren't saved. Make an account to keep them.";
       } else {
-        const sol = Number(s.total_sol ?? 0);
-        const x = await BuzzStats.load().then(r => r.players.get(me)).catch(() => null);
-        const grid = el("div", "stats");
-        const items = [
-          ["Games", s.games],
-          ["Pickups / hour", s.pickups_per_hour],
-          ["Clean games", `${s.clean_pct}%`],
-          ["SOL won / lost", `${sol >= 0 ? "+" : ""}${sol.toFixed(3)}`, sol >= 0 ? "up" : "down"],
-        ];
-        if (x) items.push(
-          ["Games won", `${x.wins} (${Math.round(x.winRate * 100)}%)`],
-          ["Time studied", BuzzStats.time(x.minutes * 60)],
-          ["Longest focus", BuzzStats.time(x.longestFocus)],
-          ["Fastest fold", x.fastestFold == null ? "Never" : BuzzStats.time(x.fastestFold)],
-          ["Best clean streak", `${x.bestCleanStreak} game${x.bestCleanStreak === 1 ? "" : "s"}`],
-          ["Current clean streak", `${x.cleanStreak} game${x.cleanStreak === 1 ? "" : "s"}`],
-          [x.mostPlayedWith ? `Most played with (${x.mostPlayedWith.n} games)` : "Most played with", x.mostPlayedWith?.name ?? "–", "name"],
-          [x.mostWonAgainst ? `Beaten most (${x.mostWonAgainst.n} times)` : "Beaten most", x.mostWonAgainst?.name ?? "–", "name"],
-        );
-        for (const [label, value, cls] of items) {
-          const box = el("div", "stat");
-          box.append(el("b", cls || "", value), el("span", "", label));
-          grid.append(box);
-        }
-        $("stats").replaceWith(grid);
-        if (x) grid.after(el("p", "stats-note", "Focus times count from the start of a game to your first pickup. A clean game counts in full."));
+        const { data: rows } = await sb.from("results")
+          .select("pickups, pickup_times, games!inner(status, start_time, end_time)")
+          .eq("user_id", me).eq("games.status", "ended");
+        showStats((rows || []).filter(r => r.games.start_time && r.games.end_time));
       }
 
       // 6. Nemesis: the person you lose to most
@@ -230,13 +210,98 @@
       if (!profile?.is_guest) {
         const { count } = await sb.from("friendships").select("id", { count: "exact", head: true })
           .eq("addressee", me).eq("status", "pending");
-        if (count) $("friendsBtn").textContent = `Friends (${count} new request${count === 1 ? "" : "s"})`;
+        if (count) $("friendsBtn").textContent = `Friends · ${count} new`;
       }
 
       if (nem) {
         $("nemesis").textContent = `Nemesis: ${nem.opponent}. You're ${nem.wins}–${nem.losses} against them.`;
         $("nemesis").hidden = false;
       }
+    }
+
+    // "1h 05m", "12m 30s", "45s"
+    function dur(sec) {
+      if (sec == null || !isFinite(sec)) return "—";
+      sec = Math.round(sec);
+      if (sec < 60) return `${sec}s`;
+      const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+      return h ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m ${String(s).padStart(2, "0")}s`;
+    }
+
+    function showStats(games) {
+      games.sort((a, b) => new Date(a.games.end_time) - new Date(b.games.end_time));
+
+      const seconds = g => (new Date(g.games.end_time) - new Date(g.games.start_time)) / 1000;
+      const totalSec = games.reduce((t, g) => t + seconds(g), 0);
+      const pickups = games.reduce((t, g) => t + g.pickups, 0);
+      const clean = games.filter(g => g.pickups === 0).length;
+
+      // Clean-game streaks (0 pickups in a row): the current one, and your best ever
+      let run = 0, best = 0;
+      for (const g of games) { run = g.pickups === 0 ? run + 1 : 0; best = Math.max(best, run); }
+
+      // Focus stretches: time between game start, each pickup, and game end.
+      // (Older games didn't save pickup times, so they're skipped here.)
+      const stretches = [];
+      for (const g of games) {
+        const times = (g.pickup_times || []).map(t => new Date(t).getTime()).sort((a, b) => a - b);
+        if (times.length !== g.pickups) continue;
+        const marks = [new Date(g.games.start_time).getTime(), ...times, new Date(g.games.end_time).getTime()];
+        for (let i = 1; i < marks.length; i++) stretches.push(Math.max(0, (marks[i] - marks[i - 1]) / 1000));
+      }
+      const none = !games.length;
+      const avg = stretches.length ? stretches.reduce((a, b) => a + b, 0) / stretches.length : null;
+
+      const tiles = [
+        ["Overall", [
+          ["Games", games.length],
+          ["Clean games", none ? "—" : `${Math.round(clean / games.length * 100)}%`, `${clean} with 0 pickups`],
+          ["Clean streak", run, `best: ${best} in a row`],
+          ["Pickups / hour", totalSec ? (pickups / (totalSec / 3600)).toFixed(1) : "—"],
+          ["Time studied", dur(totalSec)],
+        ]],
+        ["Focus (time without touching your phone)", [
+          ["Average", dur(avg)],
+          ["Longest", dur(stretches.length ? Math.max(...stretches) : null), "your record"],
+          ["Shortest", dur(stretches.length ? Math.min(...stretches) : null)],
+        ]],
+      ];
+      const wrap = el("div", "");
+      for (const [label, list] of tiles) {
+        wrap.append(el("p", "stats-label", label));
+        const grid = el("div", "stats");
+        for (const [name, value, note] of list) {
+          const box = el("div", "stat");
+          box.append(el("b", "", value), el("span", "", name));
+          if (note) box.append(el("small", "", note));
+          grid.append(box);
+        }
+        wrap.append(grid);
+      }
+      if (none) wrap.append(el("p", "stats-hint", "These fill in after you finish a game on your phone. (Hosting doesn't count.)"));
+      else if (!stretches.length) wrap.append(el("p", "stats-hint", "Focus times start counting from your next game."));
+      $("stats").replaceWith(wrap);
+      if (!none) againstFriends(wrap);
+    }
+
+    // Wins and rivals, from every finished game you shared with others (stats.js)
+    async function againstFriends(wrap) {
+      const { data: { session } } = await sb.auth.getSession();
+      const x = await BuzzStats.load().then(r => r.players.get(session?.user?.id)).catch(() => null);
+      if (!x) return;
+      const grid = el("div", "stats");
+      for (const [name, value, note] of [
+        ["Games won", `${x.wins}`, `${Math.round(x.winRate * 100)}% of your games (fewest pickups)`],
+        ["Fastest first pickup", x.fastestFold == null ? "Never" : BuzzStats.time(x.fastestFold), "from the start of a game"],
+        ["Most played with", x.mostPlayedWith?.name ?? "—", x.mostPlayedWith ? `${x.mostPlayedWith.n} games together` : ""],
+        ["Beaten most", x.mostWonAgainst?.name ?? "—", x.mostWonAgainst ? `${x.mostWonAgainst.n} wins against them` : ""],
+      ]) {
+        const box = el("div", "stat");
+        box.append(el("b", "", value), el("span", "", name));
+        if (note) box.append(el("small", "", note));
+        grid.append(box);
+      }
+      wrap.append(el("p", "stats-label", "Against your friends"), grid);
     }
 
     function showActive(title, sub, button, href) {

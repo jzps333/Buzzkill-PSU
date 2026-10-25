@@ -538,9 +538,12 @@
 
     async function loadBoard() {
       const rows = $("rows");
-      const { data, error } = await sb.from("leaderboard").select("username, pickups_per_hour").limit(3);
+      const { data: real, error } = await sb.from("leaderboard").select("username, pickups_per_hour").limit(3);
+      // Sample players for the demo (same ones as the full leaderboard), ranked together with real players
+      const SAMPLE = [["maya.studies", 0.4], ["jordan_k", 0.7], ["priya", 0.9]].map(([username, pickups_per_hour]) => ({ username: username + " (sample)", pickups_per_hour }));
+      const data = (real || []).concat(SAMPLE).sort((a, b) => Number(a.pickups_per_hour) - Number(b.pickups_per_hour)).slice(0, 3);
       rows.innerHTML = "";
-      if (error || !data || !data.length) {
+      if (!data.length) {
         const p = document.createElement("p");
         p.className = "empty";
         p.textContent = "No finished games yet. Play one and take the top spot.";
