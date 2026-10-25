@@ -41,18 +41,17 @@ for 2 seconds while `is_shaking` is still true (their phone died or lost signal)
 If the brick isn't working, anyone logged in can run a game from `https://www.buzzkill.study/host`.
 It can also play the roasts out loud from the laptop.
 
-## Wiring (Pi 4B, 3.3V only, never 5V)
+## Wiring (Grove Base Hat on the Pi)
 
-| Part | Wire | Pi pin |
+Everything plugs into the Grove Base Hat with the Grove cables. No loose wires.
+
+| Part | Plug into | Pi pins it uses |
 |---|---|---|
-| ST25DV64K NFC | VCC | 1 (3.3V) |
-| | GND | 6 |
-| | SDA | 3 (GPIO 2) |
-| | SCL | 5 (GPIO 3) |
-| Touch sensor (TTP223) | VCC | 17 (3.3V) |
-| | GND | 9 |
-| | SIG / I/O | 11 (GPIO 17) |
-| JBL Go 3 | no wires, Bluetooth (it has no aux jack) | |
+| Grove NFC Tag (ST25DV64K) | any port labeled **I2C** (right column) | SDA / SCL (GPIO 2 / 3) |
+| Grove Touch Sensor | port **D5** | GPIO 5 (set `TOUCH_PIN` in `.env` if you use another D port: D16 = 16, D18 = 18, ...) |
+| JBL Go 3 | no cable, Bluetooth (it has no aux jack) | |
+
+Don't use the **A0 / A2 / A4 / A6** ports: those go to the hat's analog chip, not to the Pi's pins.
 
 ## Getting it running (over SSH)
 

@@ -28,6 +28,7 @@ SITE = os.environ.get("SITE_URL", "https://buzzkill-psu.vercel.app").rstrip("/")
 SB_URL = os.environ.get("SUPABASE_URL", "")
 SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 SPEAKER = os.environ.get("SPEAKER_MAC", "")
+TOUCH_PIN = int(os.environ.get("TOUCH_PIN", "5"))   # Grove port D5 = GPIO 5
 ONLINE = SB_KEY.startswith("sb_secret")
 
 ROASTS = [
@@ -176,7 +177,7 @@ if __name__ == "__main__":
     nfc.write_url(SITE + "/")
     print("Tag ready:", nfc.read_url(), "| online mode:", ONLINE)
 
-    touch = Button(17, pull_up=None, active_state=True, hold_time=3)
+    touch = Button(TOUCH_PIN, pull_up=None, active_state=True, hold_time=3)
     held = [False]
     touch.when_pressed = lambda: held.__setitem__(0, False)
     touch.when_held = lambda: (held.__setitem__(0, True), on_hold())
