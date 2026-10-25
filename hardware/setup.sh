@@ -3,9 +3,8 @@
 set -e
 cd "$(dirname "$0")"
 
-sudo raspi-config nonint do_i2c 0          # turn on I2C (pins 3 and 5)
 sudo apt update
-sudo apt install -y i2c-tools python3-smbus2 python3-gpiozero python3-lgpio python3-requests \
+sudo apt install -y python3-gpiozero python3-lgpio python3-requests \
   espeak-ng mpg123 bluez pipewire pipewire-pulse pipewire-alsa wireplumber libspa-0.2-bluetooth
 
 # Let sound + the brick keep running after you log out of SSH

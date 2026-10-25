@@ -1,5 +1,5 @@
 #!/bin/bash
-# Checks the whole brick: settings, speaker, backend, NFC, services.   Run:  bash check.sh
+# Checks the whole brick: settings, speaker, backend, the game it follows, services.   Run:  bash check.sh
 cd "$(dirname "$0")"
 ok()  { echo "✅ $1"; }
 bad() { echo "❌ $1"; echo "   → $2"; }
@@ -52,13 +52,11 @@ EOF
   fi
 fi
 
-# ---------- LCD ----------
-i2c=$(i2cdetect -y 1 2>/dev/null)
-if grep -q " 3e" <<<"$i2c"; then
-  ok "LCD found"
-else
-  bad "LCD not found" "plug it into an I2C port, then: i2cdetect -y 1 (should show 3e)"
-fi
+# ---------- what the brick sees ----------
+echo
+echo "The brick right now (python3 brick.py --status):"
+python3 brick.py --status 2>&1 | sed 's/^/   /'
+echo
 
 # ---------- programs ----------
 for s in buzzkill-speaker buzzkill; do

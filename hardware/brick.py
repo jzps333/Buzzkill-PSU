@@ -1,19 +1,20 @@
-"""The Buzzkill brick: touch sensor + LCD screen (+ NFC board if one is plugged in).
-Roasts on the speaker are speaker.py's job.
+"""The Buzzkill brick: a touch sensor and a speaker. Roasts are speaker.py's job; this is the game host.
 
 Touch sensor (the speaker answers every tap):
   tap         no game -> new SOLO game (right after a game ends too: one tap = the next game)
               waiting -> says the PIN again (slowly, twice) and how many people are in, every tap until the game starts
-              live    -> says the time left and the scoreboard (and flips the LCD page)
+              live    -> says the time left and the scoreboard
   double tap  no game -> new TEAMS game
-              waiting -> start the game (4+ players)
-  (no tap)    the game starts by itself 5 seconds after the 4th player joins (AUTO_START in .env)
+              waiting -> start the game now (4+ players)
   triple tap  end the game and say who won (or close it if it never started)
   hold 3 s    same as triple tap
+  (no tap)    the game starts by itself 5 seconds after the 4th player joins (AUTO_START in .env)
 
-LCD: the PIN to join while waiting, then the clock / pomodoro, who's busted, who's winning.
 The brick follows any open game that uses this speaker, so games started from /host show up too.
 The NFC sticker / QR code on the brick points at /brick, which always forwards to this game.
+
+  python3 brick.py            run it (the buzzkill service does this on boot)
+  python3 brick.py --status   what the brick sees right now: run it while people are joining
 """
 import os
 import subprocess
@@ -25,9 +26,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
-from gpiozero import Button
-
-import lcd
 
 HERE = Path(__file__).resolve().parent
 for line in (HERE / ".env").read_text().splitlines() if (HERE / ".env").exists() else []:
@@ -35,45 +33,28 @@ for line in (HERE / ".env").read_text().splitlines() if (HERE / ".env").exists()
         k, v = line.split("=", 1)
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
-SITE = os.environ.get("SITE_URL", "https://buzzkill-psu.vercel.app").rstrip("/")
-JOIN_HINT = os.environ.get("JOIN_HINT", "buzzkill.study")      # shown under the PIN
 SB_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 SPEAKER_ID = os.environ.get("SPEAKER_ID", "brick")
-TOUCH_PIN = int(os.environ.get("TOUCH_PIN", "5"))   # Grove port D5 = GPIO 5
-AUTO_START = int(os.environ.get("AUTO_START", "4"))  # start by itself once this many have joined (0 = only by double tap)
+TOUCH_PIN = int(os.environ.get("TOUCH_PIN", "5"))     # Grove port D5 = GPIO 5
+AUTO_START = int(os.environ.get("AUTO_START", "4"))   # start by itself once this many have joined (0 = only by double tap)
 ONLINE = SB_KEY.startswith("sb_secret")
 HEADERS = {"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}"}
 
 code = None          # current room code
-auto_for = None      # the game a countdown is running for
-auto_tried = 0       # when the last auto-start was tried (so a failed one retries, but not every second)
-last_count = None    # (game, players) last printed to the log
 game = {}            # its games row
 players = []         # its results rows
-page = 0             # LCD page while live
-flash = None         # (top, bottom, color, until): a short message that wins over everything
+auto_for = None      # the game a start countdown is running for
+auto_tried = 0       # when the last auto-start was tried (a failed one retries, but not every second)
+last_count = None    # (game, players) last written to the log
 lock = threading.Lock()
 
 
-# ---------- screen, voice, NFC ----------
-class NoScreen:
-    def show(self, *a, **k):
-        pass
+def log(*a):
+    print(time.strftime("%H:%M:%S"), *a, flush=True)
 
 
-try:
-    screen = lcd.LCD()
-except Exception as e:
-    print("No LCD found (plug it into an I2C port):", e)
-    screen = NoScreen()
-
-
-def note(top, bottom, color, secs=3):
-    global flash
-    flash = (top, bottom, color, time.time() + secs)
-
-
+# ---------- the voice ----------
 voice = None
 said = 0                 # counts announcements, so a newer tap wins over an older one still loading
 AI_VOICE = os.environ.get("AI_ROASTS", "1") != "0"
@@ -113,7 +94,7 @@ def say(text):
     # The brick's own announcements (PIN, scoreboard, time). Roasts are speaker.py's job.
     global said
     said += 1
-    print("say:", text)
+    log("say:", text)
     threading.Thread(target=_say, args=(short(text), said), daemon=True).start()
 
 
@@ -129,94 +110,67 @@ def _say(text, n):
     voice = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def tag(url):
-    # The Grove NFC board is optional (it needs an antenna). Stickers point at /brick instead.
-    try:
-        import nfc
-        nfc.write_url(url)
-    except Exception:
-        pass
-
 
 # ---------- Supabase (plain REST, secret key = acts as the Pi) ----------
+class DbError(RuntimeError):
+    pass
+
+
+def _check(r):
+    if r.status_code >= 300:
+        try:
+            msg = r.json().get("message") or r.text
+        except ValueError:
+            msg = r.text
+        raise DbError(f"{r.status_code}: {msg[:200]}")
+
+
 def rpc(name, args=None):
     r = requests.post(f"{SB_URL}/rest/v1/rpc/{name}", json=args or {}, headers=HEADERS, timeout=10)
-    if r.status_code >= 300:
-        raise RuntimeError(r.json().get("message", r.text))
+    _check(r)
     return r.json() if r.text else None
 
 
 def get(table, **params):
     r = requests.get(f"{SB_URL}/rest/v1/{table}", params=params, headers=HEADERS, timeout=10)
-    r.raise_for_status()
+    _check(r)
     return r.json()
 
 
-# ---------- touch sensor ----------
+# ---------- game actions ----------
 def new_game(mode):
-    global code, page
+    global code
     with lock:
         try:
-            code, page = rpc("create_game", {"p_mode": mode}), 0
+            code = rpc("create_game", {"p_mode": mode})
             try:
                 rpc("set_game_speaker", {"p_code": code, "p_speaker": SPEAKER_ID})
             except Exception as e:
-                print("speaker not set (is speaker.py running?):", e)
-            tag(f"{SITE}/join?room={code}")
-            print("new", mode, "game", code, flush=True)
+                log("speaker not linked (roasts won't play on the brick; run backend/speaker.sql):", e)
+            log("new", mode, "game", code)
             say(("New team game. " if mode == "teams" else "New game. ") + pin_line())
         except Exception as e:
-            print("create failed:", e)
-            note("Can't start game", "Check internet", lcd.RED)
-
-
-def on_tap():
-    global page
-    if not ONLINE:
-        note("No secret key", "Fill in .env", lcd.RED)
-        say("Buzzkill is ready, but not connected to the game yet. Add the secret key.")
-        return
-    if code is None:
-        return new_game("solo")
-    status = game.get("status")
-    if status == "waiting":
-        note(f"PIN {code}", f"{len(players)}/4 joined", lcd.HONEY, 5)
-        say(lobby_line())
-    elif status == "live":
-        page += 1
-        say(time_line() + " " + score_line())
+            log("create failed:", e)
+            say("Couldn't start a game. Check the brick's internet.")
 
 
 def start():
-    if game.get("status") == "waiting":
-        with lock:
-            try:
-                rpc("start_game", {"p_code": code})
-                game["status"] = "live"
-                print("game", code, "started", flush=True)
-                say("Game on. Phones down. Good luck.")
-            except Exception as e:
-                print("start failed:", e, flush=True)
-                if "4 players" in str(e):
-                    note("Need 4 players", f"Have {len(players)}", lcd.RED)
-                    say("Couldn't start yet. Need at least 4 players, and everyone has to keep the page open.")
-                elif "even" in str(e).lower():
-                    note("Teams need", "an even number", lcd.RED)
-                    say("Teams need an even number of players.")
-                else:
-                    note("Can't start", str(e)[:16], lcd.RED)
-                    say("Couldn't start the game. Check the brick's log.")
-
-
-def on_double():
-    if not ONLINE:
-        return on_tap()
-    if code is None:
-        new_game("teams")
-    elif game.get("status") == "waiting":
-        start()
-    else:
-        on_tap()
+    if game.get("status") != "waiting":
+        return
+    with lock:
+        try:
+            rpc("start_game", {"p_code": code})
+            game["status"] = "live"
+            log("game", code, "started")
+            say("Game on. Phones down. Good luck.")
+        except Exception as e:
+            log("start failed:", e)
+            if "4 players" in str(e):
+                say("Couldn't start yet. Need at least 4 players, and everyone has to keep the page open.")
+            elif "even" in str(e).lower():
+                say("Teams need an even number of players.")
+            else:
+                say("Couldn't start the game. Check the brick's log.")
 
 
 def end_game():
@@ -231,54 +185,59 @@ def end_game():
         try:
             rpc("finish_game" if live else "cancel_game", {"p_code": code})
         except Exception as e:
-            print("end failed:", e)
+            log("end failed:", e)
         reset()
     if live:
-        note("Game over!", "Tap = new game", lcd.WHITE, 8)
         say(f"Game over. {winner_line(final)} Tap to start a new game.")
     else:
-        note("Game closed", "Tap = new game", lcd.WHITE, 8)
         say("Game closed. Tap to start a new game.")
-
-
-def winner_line(final):
-    if not final:
-        return ""
-    fewest = min(p["pickups"] for p in final)
-    best = [p for p in final if p["pickups"] == fewest]
-    n = "zero" if fewest == 0 else str(fewest)
-    picks = "pickup" if fewest == 1 else "pickups"
-    if len(best) == len(final):
-        return f"Everyone tied with {n} {picks}."
-    if len(best) == 1:
-        return f"{name(best[0])} wins with {n} {picks}."
-    return f"{names(best)} tie for the win with {n} {picks}."
 
 
 def reset():
     global code, game, players
     code, game, players = None, {}, []
-    tag(SITE + "/brick")
+
+
+# ---------- touch sensor ----------
+def on_tap():
+    if not ONLINE:
+        return say("Buzzkill is ready, but not connected to the game yet. Add the secret key.")
+    if code is None:
+        return new_game("solo")
+    if game.get("status") == "waiting":
+        say(lobby_line())
+    elif game.get("status") == "live":
+        say(time_line() + " " + score_line())
+
+
+def on_double():
+    if not ONLINE:
+        return on_tap()
+    if code is None:
+        new_game("teams")
+    elif game.get("status") == "waiting":
+        start()
+    else:
+        on_tap()
 
 
 # ---------- keep up with the game ----------
 def refresh():
-    """Find the brick's game and read it. Returns False when there's nothing to show."""
+    """Find the brick's game and read it, then auto-start it when enough players are in."""
     global code, game, players
     if code is None:
-        found = get("games", select="code", speaker=f"eq.{SPEAKER_ID}", status="in.(waiting,live)")
+        found = get("games", select="*", speaker=f"eq.{SPEAKER_ID}", status="in.(waiting,live)")
         if not found:
             return
         code = found[0]["code"]                      # e.g. a game started from /host
-    rows = get("games", code=f"eq.{code}", select="status,mode,start_time,pomo_work,pomo_break,speaker")
-    if not rows or rows[0]["status"] in ("ended", "cancelled") or rows[0]["speaker"] != SPEAKER_ID:
-        if rows and rows[0]["status"] == "ended":
-            note("Game over!", "Check your phone", lcd.WHITE, 8)
+    rows = get("games", select="*", code=f"eq.{code}")    # "*": never fails on a column that isn't there
+    g = rows[0] if rows else None
+    if not g or g.get("status") in ("ended", "cancelled") or g.get("speaker", SPEAKER_ID) not in (SPEAKER_ID, None):
         with lock:
             reset()
         return
-    game = rows[0]
-    players = get("results", game=f"eq.{code}", select="user_id,pickups,alarm_on,profiles(username)")
+    game = g
+    players = get("results", select="user_id,pickups,alarm_on,profiles(username)", game=f"eq.{code}")
     auto_start()
 
 
@@ -287,14 +246,13 @@ def auto_start():
     global auto_for, auto_tried, last_count
     if game.get("status") == "waiting" and (code, len(players)) != last_count:
         last_count = (code, len(players))
-        print(f"lobby {code}: {len(players)} player(s) in (auto-start at {AUTO_START or 'off'})", flush=True)
+        log(f"lobby {code}: {len(players)} player(s) in (auto-start at {AUTO_START or 'off'})")
     if not AUTO_START or game.get("status") != "waiting" or len(players) < AUTO_START:
         return
     if auto_for == code or time.time() - auto_tried < 12:      # countdown running, or just tried
         return
     auto_for, auto_tried = code, time.time()
-    print(f"auto-start: {len(players)} players in {code}, starting in 5 s", flush=True)
-    note(f"{len(players)} players in!", "Starting in 5s", lcd.GREEN, 5)
+    log(f"auto-start: {len(players)} players in {code}, starting in 5 s")
     say(f"{len(players)} players in. Starting in 5 seconds. Phones face down.")
 
     def go(c=code):
@@ -307,11 +265,6 @@ def auto_start():
 
 def name(p):
     return (p.get("profiles") or {}).get("username") or "player"
-
-
-def clock(secs):
-    secs = max(0, int(secs))
-    return f"{secs // 60}:{secs % 60:02d}"
 
 
 def timer():
@@ -380,42 +333,22 @@ def score_line():
     return line
 
 
-def render():
-    now = time.time()
-    if flash and now < flash[3]:
-        return screen.show(*flash[:3])
-    if not ONLINE:
-        return screen.show("    BUZZKILL", "Add key to .env", lcd.HONEY)
-    if code is None:
-        return screen.show("    BUZZKILL", "Tap=solo 2x=team", lcd.HONEY)
-
-    if game.get("status") == "waiting":
-        n = len(players)
-        team = " TEAMS" if game.get("mode") == "teams" else ""
-        bottom = (JOIN_HINT if int(now / 3) % 2 else
-                  f"{n}/4 joined" if n < 4 else f"{n} in! Tap=start")
-        return screen.show(f"PIN {code}{team}", bottom, lcd.HONEY)
-
-    # Live
-    busted = [p for p in players if p["alarm_on"]]
-    if busted:
-        return screen.show("BUSTED: " + ", ".join(name(p) for p in busted), "Shake to stop!", lcd.RED)
-
-    on_break, left, t = timer()
-    clock_line = f"LIVE {clock(t)}" if left is None else f"{'BREAK' if on_break else 'FOCUS'} {clock(left)}"
-    total = sum(p["pickups"] for p in players)
-    ranked = sorted(players, key=lambda p: p["pickups"])
-    pages = [
-        (clock_line, f"Pickups: {total}"),
-        ("Most focused:", f"{name(ranked[0])} ({ranked[0]['pickups']})" if ranked else "-"),
-        ("Most pickups:", f"{name(ranked[-1])} ({ranked[-1]['pickups']})" if ranked else "-"),
-        (f"PIN {code}", f"{len(players)} playing"),
-    ]
-    screen.show(*pages[page % len(pages)], lcd.BLUE if on_break else lcd.GREEN)
+def winner_line(final):
+    if not final:
+        return ""
+    fewest = min(p["pickups"] for p in final)
+    best = [p for p in final if p["pickups"] == fewest]
+    n = "zero" if fewest == 0 else str(fewest)
+    picks = "pickup" if fewest == 1 else "pickups"
+    if len(best) == len(final):
+        return f"Everyone tied with {n} {picks}."
+    if len(best) == 1:
+        return f"{name(best[0])} wins with {n} {picks}."
+    return f"{names(best)} tie for the win with {n} {picks}."
 
 
 def main_loop():
-    last_fetch = last_prune = 0
+    last_fetch = last_prune = last_error = 0
     while True:
         now = time.time()
         if ONLINE and now - last_fetch > 1:
@@ -426,11 +359,9 @@ def main_loop():
                     last_prune = now
                     rpc("prune_lobby", {"p_code": code})     # drop players who closed their browser
             except Exception as e:
-                print("refresh failed:", e, flush=True)
-        try:
-            render()
-        except Exception as e:
-            print("screen failed:", e)
+                if now - last_error > 10:                    # don't flood the log every second
+                    last_error = now
+                    log("refresh failed:", e)
         time.sleep(0.3)
 
 
@@ -440,25 +371,34 @@ def status():
     print("auto-start at:", AUTO_START or "off", "| speaker id:", SPEAKER_ID)
     if not ONLINE:
         return
-    open_games = get("games", select="code,status,speaker,mode", status="in.(waiting,live)")
-    mine = [g for g in open_games if g["speaker"] == SPEAKER_ID]
+    try:
+        open_games = get("games", select="*", status="in.(waiting,live)")
+    except DbError as e:
+        return print("can't read games:", e)
+    if open_games and "speaker" not in open_games[0]:
+        print("PROBLEM: games have no 'speaker' column. Run backend/speaker.sql in the Supabase SQL Editor.")
+    mine = [g for g in open_games if g.get("speaker") == SPEAKER_ID]
     print("open games:", len(open_games), "| following this brick:", [g["code"] for g in mine] or "none")
     for g in open_games:
-        if g["speaker"] != SPEAKER_ID:
-            print(f"  {g['code']} ({g['status']}) is NOT on this brick (speaker = {g['speaker']}). Start games by tapping the brick.")
+        if g.get("speaker") != SPEAKER_ID:
+            print(f"  {g['code']} ({g['status']}) is NOT on this brick (speaker = {g.get('speaker')}). Start games by tapping the brick.")
     for g in mine:
-        rows = get("results", game=f"eq.{g['code']}", select="user_id,profiles(username)")
-        print(f"  {g['code']} ({g['status']}, {g['mode']}): {len(rows)} player(s):", ", ".join(name(r) for r in rows) or "-")
+        try:
+            rows = get("results", select="user_id,profiles(username)", game=f"eq.{g['code']}")
+            print(f"  {g['code']} ({g['status']}, {g.get('mode', 'solo')}): {len(rows)} player(s):", ", ".join(name(r) for r in rows) or "-")
+        except DbError as e:
+            print(f"  {g['code']}: can't read players:", e)
 
 
 # ---------- start ----------
 if __name__ == "__main__" and "--status" in sys.argv:
     status()
     sys.exit()
-if __name__ == "__main__":
-    tag(SITE + "/brick")
-    print("online mode:", ONLINE, "| touch pin:", TOUCH_PIN)
 
+if __name__ == "__main__":
+    from gpiozero import Button
+
+    log("online mode:", ONLINE, "| touch pin:", TOUCH_PIN, "| auto-start at:", AUTO_START or "off")
     touch = Button(TOUCH_PIN, pull_up=None, active_state=True, hold_time=3)
     held = [False]
     taps = [0, None]          # taps so far, and the timer that decides once they stop
