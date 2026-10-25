@@ -188,9 +188,11 @@ Two programs run on the Pi:
 
 **Touch sensor**
 
+The speaker answers every tap:
+
 | Touch | No game | Waiting for players | Live |
 |---|---|---|---|
-| Tap | new **solo** game | start it (needs 4+) | next LCD page |
+| Tap | **activates**: new **solo** game, says the PIN | under 4 players: says the PIN and who's in. 4+: starts the game | says the time left and the scoreboard ("Alex is losing, with 3 pickups, down 0.06 SOL. Sam is still clean.") |
 | Double tap | new **teams** game | | |
 | Hold 3 s | | close it | end it + pay out |
 

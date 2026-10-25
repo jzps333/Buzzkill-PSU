@@ -1,8 +1,10 @@
 """The Buzzkill brick: touch sensor + LCD screen (+ NFC board if one is plugged in).
 Roasts on the speaker are speaker.py's job.
 
-Touch sensor:
-  tap         no game -> new SOLO game        waiting -> start it (4+ players)        live -> next LCD page
+Touch sensor (the speaker answers every tap):
+  tap         no game -> new SOLO game
+              waiting -> under 4 players: says the PIN and who's in.  4+: starts the game
+              live    -> says the time left and the scoreboard (and flips the LCD page)
   double tap  no game -> new TEAMS game
   hold 3 s    end the game (or close it if it never started)
 
@@ -63,9 +65,16 @@ def note(top, bottom, color, secs=3):
     flash = (top, bottom, color, time.time() + secs)
 
 
+voice = None
+
+
 def say(text):
-    # Short status lines only. While a game is live, speaker.py does the roasting.
-    subprocess.Popen(["espeak-ng", "-v", "en-us", "-s", "160", "-a", "200", text])
+    # The brick's own announcements. Roasts are speaker.py's job.
+    global voice
+    if voice and voice.poll() is None:
+        voice.kill()                 # a new tap cuts off the last announcement
+    print("say:", text)
+    voice = subprocess.Popen(["espeak-ng", "-v", "en-us", "-s", "150", "-a", "200", text])
 
 
 def tag(url):
@@ -103,8 +112,7 @@ def new_game(mode):
                 print("speaker not set (is speaker.py running?):", e)
             tag(f"{SITE}/join?room={code}")
             print("new", mode, "game", code)
-            say("New team game." if mode == "teams" else "New game.")
-            say("Join with the code on the screen.")
+            say(("New team game. " if mode == "teams" else "New game. ") + pin_line())
         except Exception as e:
             print("create failed:", e)
             note("Can't start game", "Check internet", lcd.RED)
@@ -118,7 +126,10 @@ def on_tap():
     if code is None:
         return new_game("solo")
     status = game.get("status")
-    if status == "waiting":
+    if status == "waiting" and len(players) < 4:
+        note(f"PIN {code}", f"{len(players)}/4 joined", lcd.HONEY, 5)
+        say(lobby_line())
+    elif status == "waiting":
         with lock:
             try:
                 rpc("start_game", {"p_code": code})
@@ -132,6 +143,7 @@ def on_tap():
                     note("Can't start", str(e)[:16], lcd.RED)
     elif status == "live":
         page += 1
+        say(time_line() + " " + score_line())
 
 
 def on_double():
@@ -175,7 +187,7 @@ def refresh():
             reset()
         return
     game = rows[0]
-    players = get("results", game=f"eq.{code}", select="user_id,pickups,alarm_on,profiles(username)")
+    players = get("results", game=f"eq.{code}", select="user_id,pickups,alarm_on,sol_in,profiles(username)")
 
 
 def name(p):
@@ -185,6 +197,66 @@ def name(p):
 def clock(secs):
     secs = max(0, int(secs))
     return f"{secs // 60}:{secs % 60:02d}"
+
+
+def timer():
+    """(on_break, seconds left in this focus/break, seconds since start). No pomodoro: seconds left = None."""
+    start = datetime.fromisoformat(game["start_time"]) if game.get("start_time") else datetime.now(timezone.utc)
+    t = (datetime.now(timezone.utc) - start).total_seconds()
+    w, b = (game.get("pomo_work") or 0) * 60, (game.get("pomo_break") or 0) * 60
+    if not (w and b):
+        return False, None, t
+    pos = t % (w + b)
+    return pos >= w, (w + b - pos) if pos >= w else (w - pos), t
+
+
+# ---------- what the brick says when tapped ----------
+def minutes(secs):
+    m = round(secs / 60)
+    return "less than a minute" if secs < 60 else f"{m} minute{'s' if m != 1 else ''}"
+
+
+def names(ps):
+    ns = [name(p) for p in ps]
+    return ns[0] if len(ns) == 1 else ", ".join(ns[:-1]) + " and " + ns[-1]
+
+
+def pin_line():
+    return "Your PIN is " + ", ".join(code) + "."             # "4, F, 2, A, 9, C": read one by one
+
+
+def lobby_line():
+    n = len(players)
+    who = f"{n} player{'s' if n != 1 else ''} in" + (f": {names(players)}." if players else ".")
+    return f"{pin_line()} {who} Need {4 - n} more to start."
+
+
+def time_line():
+    on_break, left, t = timer()
+    if left is None:
+        return f"{minutes(t)} in."
+    if on_break:
+        return f"Break time. {minutes(left)} left."
+    return f"Focus time. {minutes(left)} left, then a {game['pomo_break']} minute break."
+
+
+def score_line():
+    if not players:
+        return ""
+    if all(p["pickups"] == 0 for p in players):
+        return "Nobody has touched their phone. Legends."
+    worst = max(players, key=lambda p: p["pickups"])
+    n = worst["pickups"]
+    line = f"{name(worst)} is losing, with {n} pickup{'s' if n != 1 else ''}"
+    lost = min(n * 0.02, float(worst.get("sol_in") or 0))          # same 0.02 SOL per pickup as finish_game
+    line += f", down {lost:.2f} SOL." if lost else "."
+    clean = [p for p in players if p["pickups"] == 0]
+    if clean:
+        line += f" {names(clean)} {'is' if len(clean) == 1 else 'are'} still clean."
+    else:
+        best = min(players, key=lambda p: p["pickups"])
+        line += f" {name(best)} is winning, with {best['pickups']}."
+    return line
 
 
 def render():
@@ -208,20 +280,12 @@ def render():
     if busted:
         return screen.show("BUSTED: " + ", ".join(name(p) for p in busted), "Shake to stop!", lcd.RED)
 
-    start = datetime.fromisoformat(game["start_time"]) if game.get("start_time") else datetime.now(timezone.utc)
-    t = (datetime.now(timezone.utc) - start).total_seconds()
-    w, b = (game.get("pomo_work") or 0) * 60, (game.get("pomo_break") or 0) * 60
-    on_break = False
-    if w and b:
-        pos = t % (w + b)
-        on_break = pos >= w
-        timer = f"BREAK {clock(w + b - pos)}" if on_break else f"FOCUS {clock(w - pos)}"
-    else:
-        timer = f"LIVE {clock(t)}"
+    on_break, left, t = timer()
+    clock_line = f"LIVE {clock(t)}" if left is None else f"{'BREAK' if on_break else 'FOCUS'} {clock(left)}"
     total = sum(p["pickups"] for p in players)
     ranked = sorted(players, key=lambda p: p["pickups"])
     pages = [
-        (timer, f"Pickups: {total}"),
+        (clock_line, f"Pickups: {total}"),
         ("Most focused:", f"{name(ranked[0])} ({ranked[0]['pickups']})" if ranked else "-"),
         ("Most pickups:", f"{name(ranked[-1])} ({ranked[-1]['pickups']})" if ranked else "-"),
         (f"PIN {code}", f"{len(players)} playing"),
