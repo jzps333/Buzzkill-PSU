@@ -9,11 +9,9 @@ Bluetooth speaker, and roasts whoever picks up their phone. Supabase is the refe
 | Grove Touch Sensor (port **D5**) | the only button: start, scoreboard, end |
 | JBL Go 3 (Bluetooth) | the brick's voice: roasts + announcements (ElevenLabs) |
 | NFC sticker / QR code on the lid | `https://buzzkill-psu.vercel.app/brick` → joins the brick's current game |
-| Grove LCD 16x2 (optional, I2C) | PIN and live game info |
-| Grove NFC ST25DV64 (optional, I2C) | the Pi can rewrite it per game, but it needs a separate 13.56 MHz antenna |
 
 Two programs run on the Pi (both start on boot):
-- **`brick.py`**: the touch sensor, the brick's announcements (PIN, scoreboard, time left) and the LCD.
+- **`brick.py`**: the touch sensor and the brick's announcements (PIN, who's in, scoreboard, time left, winner).
 - **`speaker.py`**: plays an AI roast on loop while someone is busted, stops while they shake.
 
 
@@ -42,7 +40,7 @@ systemctl --user restart buzzkill-speaker buzzkill
 bash check.sh
 ```
 - `bluetoothctl connect` must say **Connection successful** (the JBL beeps). If not: turn the JBL off and on, run it again.
-- `check.sh` should be all ✅ (the LCD line can be ❌ if it's not plugged in). Fix any other ❌ with the line it prints.
+- `check.sh` should be all ✅. Fix any ❌ with the line it prints. It also shows what the brick sees (`python3 brick.py --status`).
 - You should hear **"Buzzkill speaker ready."** from the JBL after the restart.
 
 **Sound check (optional, 5 seconds)**
@@ -143,12 +141,11 @@ Everything plugs into the Grove Base Hat with Grove cables. No loose wires.
 | Part | Port | Pi pins |
 |---|---|---|
 | Touch sensor | **D5** | GPIO 5 (another D port: set `TOUCH_PIN` in `.env`, e.g. D16 = 16) |
-| LCD (optional) | any **I2C** port | SDA / SCL, address `3e` |
-| NFC board (optional) | any **I2C** port | SDA / SCL, addresses `53`, `57`, `2d` |
 | JBL Go 3 | Bluetooth | |
 
 Don't use the **A0 / A2 / A4 / A6** ports: they go to the hat's analog chip, not to the Pi's pins.
-Test the parts on their own: `python3 test_touch.py`, `python3 lcd.py "Hello" "World"`, `i2cdetect -y 1`.
+Test the touch sensor on its own: `python3 test_touch.py` (stop the brick first: `systemctl --user stop buzzkill`).
+See what the brick sees during a game: `python3 brick.py --status`.
 
 
 ## Pairing the JBL Go 3
@@ -190,7 +187,7 @@ Supabase is the referee: a database trigger counts pickups, runs the shake penal
 ```
 Phones ──events──► Supabase (database = referee) ◄──every 0.5 s── Pi
                                                     ├─ speaker.py → JBL: roasts busted players
-                                                    └─ brick.py   → touch pad, announcements, LCD
+                                                    └─ brick.py   → touch pad, announcements
 ```
 
 **Which game the Pi follows:** the open game with `games.speaker = 'brick'`. The brick sets it when you tap to create a game,
@@ -216,11 +213,9 @@ If it fails, the Pi reads the text with espeak-ng, or uses a built-in roast. `AI
 
 | File | What it is |
 |---|---|
-| `brick.py` | touch pad, announcements, LCD; runs as `buzzkill.service` |
+| `brick.py` | touch pad and announcements; runs as `buzzkill.service` (`--status` = what it sees right now) |
 | `speaker.py` | roasts on the Bluetooth speaker; runs as `buzzkill-speaker.service` (`--test` says one roast) |
-| `setup.sh` | one-time install: packages, I2C, PipeWire Bluetooth audio, both services |
-| `check.sh` | checks settings, speaker, backend, LCD and services, with a fix for each ❌ |
-| `lcd.py` | Grove 16x2 LCD driver (`python3 lcd.py "top" "bottom"` to test) |
-| `nfc.py` | writes a link to the ST25DV64 NFC board (`--read`, `--check`, `--fix-rf`) |
+| `setup.sh` | one-time install: packages, PipeWire Bluetooth audio, both services |
+| `check.sh` | checks settings, speaker, backend, the brick's game and services, with a fix for each ❌ |
 | `test_touch.py` | prints `touched` when you touch the pad |
 | `.env.example` | settings template: copy to `.env` and add the secret key |

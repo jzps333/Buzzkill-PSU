@@ -56,7 +56,7 @@ Breaks in the pomodoro don't count.
 | Website | plain HTML/JS on Vercel, Supabase JS, device motion + wake lock APIs |
 | Backend | Supabase: Postgres, row-level security, triggers, Realtime, Auth (Google, email, guests) |
 | AI roasts | Supabase Edge Function: Gemini (writes from real stats, new style every time) + ElevenLabs (voice) |
-| Hardware | Raspberry Pi 4B, Grove Base Hat, touch sensor, JBL Go 3 over Bluetooth, NFC sticker, optional 16x2 LCD |
+| Hardware | Raspberry Pi 4B, Grove Base Hat, touch sensor, JBL Go 3 over Bluetooth, NFC sticker + QR code |
 | Security | RLS on every table, only the host or the Pi can run a game or spend AI credits, phone-only joining, escaped usernames, strict CSP |
 
 **SOL stakes:** profiles can hold a Solana wallet, and `finish_game` already calculates payouts for staked games
@@ -69,7 +69,7 @@ Breaks in the pomodoro don't count.
 | [`frontend/`](frontend) | the website: landing + PIN, login, game (`join`), `host`, results, leaderboard, dashboard, friends, `brick` |
 | [`backend/`](backend) | Supabase SQL: tables, security, game rules, teams, pomodoro, lobby. [README](backend/README.md) |
 | [`supabase/functions/roast`](supabase/functions/roast) | the AI roast Edge Function (Gemini + ElevenLabs) |
-| [`hardware/`](hardware) | the brick's Raspberry Pi code: touch pad, speaker, LCD, NFC. [README](hardware/README.md) |
+| [`hardware/`](hardware) | the brick's Raspberry Pi code: touch pad and speaker. [README](hardware/README.md) |
 
 ## Run it yourself
 
