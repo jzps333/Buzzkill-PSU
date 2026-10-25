@@ -94,7 +94,7 @@
     <p class="b-roast" id="bRoast"></p>
     <p class="b-hint" id="bHint">Shake your phone to send Buzz away</p>
     <div class="b-meter"><span id="bFill"></span></div>
-    <p class="b-secs" id="bSecs">0.0 / 10 seconds</p>
+    <p class="b-secs" id="bSecs">0.0s / 10.0s</p>
   </section>
 
   <script src="vendor/supabase.js"></script>
@@ -186,7 +186,9 @@
       if (s === "ended")   { hideBusted(); show("happy", "Game over", "Loading results…"); stopMotion(); setTimeout(() => location.href = "results?room=" + room, 2000); }
     }
 
-    // ---------- 3. BUSTED: 10 seconds of real shaking, Buzz bounces on every shake ----------
+    // ---------- 3. BUSTED: shake to silence it (10s, then 30s, 1 min, +30s each pickup), Buzz bounces on every shake ----------
+    // 7.5 -> "7.5s", 90 -> "1:30"
+    const clock = s => s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
     // The database measures shaking time from the "shake" messages (about 2 a second while
     // you shake) and decides when you're done. This screen shows the same clock with Buzz.
     let shakeSeconds = 10;     // replaced by the database's shake_secs_needed
@@ -208,7 +210,7 @@
       tickMs: TICK_MS,
       onProgress: (f, ms) => {
         $("bFill").style.width = (f * 100).toFixed(1) + "%";
-        $("bSecs").textContent = `${(ms / 1000).toFixed(1)} / ${shakeSeconds} seconds`;
+        $("bSecs").textContent = `${clock(ms / 1000)} / ${clock(shakeSeconds)}`;
       },
       onTick: () => send("shake"),           // the database adds up shaking time and turns the alarm off
       onDone: () => {

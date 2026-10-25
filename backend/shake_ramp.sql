@@ -1,6 +1,6 @@
--- Buzzkill: 10 seconds of shaking turns your alarm off (instead of 30s, 60s, 90s...).
--- game.sql already has this change. Run THIS file once on the live database:
--- Supabase -> SQL Editor -> paste -> Run. It only replaces the referee function.
+-- Buzzkill: shaking time grows each pickup: 10s, 30s, 1 min, then +30s each time (1:30, 2:00, ...)
+-- Replaces shake_10s.sql. Run once on the live database: Supabase -> SQL Editor -> paste -> Run.
+-- It only replaces the referee function.
 
 create or replace function public.process_event()
 returns trigger
@@ -16,12 +16,16 @@ begin
     insert into public.results (game, user_id) values (new.game, new.user_id)
     on conflict do nothing;
 
-  -- PICKUP: +1, alarm on. 10 seconds of shaking turns it off.
+  -- PICKUP: +1, alarm on. Shaking needed: 10s, 30s, 1 min, then +30s every pickup after.
   elsif new.type in ('pickup', 'left_page') and g = 'live' then
     update public.results set
       pickups           = pickups + 1,
       alarm_on          = true,
-      shake_secs_needed = 10,
+      shake_secs_needed = case pickups          -- pickups BEFORE this one
+                            when 0 then 10      -- 1st pickup: 10 seconds
+                            when 1 then 30      -- 2nd pickup: 30 seconds
+                            else 30 * pickups   -- 3rd: 60s (1 min), 4th: 90s, 5th: 120s, ... (+30s each time)
+                          end,
       shake_secs_done   = 0,
       is_shaking        = false,
       last_shake_at     = null,
