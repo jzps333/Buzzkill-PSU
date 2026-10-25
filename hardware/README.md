@@ -11,7 +11,7 @@ The Pi only needs to do 3 things, using the secret key in `.env`:
 
 | Touch | Call | What happens |
 |---|---|---|
-| Tap (no game) | `create_game()` → returns a code like `4F2A9C` | Write `https://buzzkill-psu.vercel.app/join?room=CODE` to the NFC tag |
+| Tap (no game) | `create_game()` → returns a code like `4F2A9C` | Write `https://www.buzzkill.study/join?room=CODE` to the NFC tag |
 | Tap (waiting) | `start_game(p_code)` | Game goes live |
 | Hold 3 s | `finish_game(p_code)` | Game ends, SOL payouts are calculated |
 
@@ -31,7 +31,7 @@ sb.rpc("finish_game", {"p_code": code}).execute()
 
 ## Backup
 
-If the brick isn't working, anyone logged in can run a game from `https://buzzkill-psu.vercel.app/host`.
+If the brick isn't working, anyone logged in can run a game from `https://www.buzzkill.study/host`.
 It can also play the roasts out loud from the laptop.
 
 ## Wiring (Pi 4B, 3.3V only)

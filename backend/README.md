@@ -9,7 +9,7 @@ Supabase handles logins and the database. There's no server code to run for this
 3. **Authentication → Sign In / Providers**:
    - Turn **on** "Allow anonymous sign-ins" (this is how guests work).
    - Turn **off** "Confirm email" (so signups work instantly at the hackathon).
-4. **Authentication → URL Configuration**: Site URL = `https://buzzkill-psu.vercel.app`, Redirect URL = `https://buzzkill-psu.vercel.app/**`.
+4. **Authentication → URL Configuration**: Site URL = `https://www.buzzkill.study`. Redirect URLs = `https://www.buzzkill.study/**`, `https://buzzkill.study/**`, `https://buzzkill-psu.vercel.app/**`.
 5. **Google login**: see "Google sign-in" below.
 6. **Project Settings → API** → copy the URL and the **anon** key into `frontend/config.js`.
 
@@ -53,7 +53,7 @@ sb.from("rivalries").select("*").eq("user_id", myId).gt("losses", 0)
 
 1. Go to console.cloud.google.com → make a project → **APIs & Services → OAuth consent screen** → External → fill in app name and your email.
 2. **Credentials → Create credentials → OAuth client ID** → Web application.
-   - Authorized JavaScript origin: `https://buzzkill-psu.vercel.app`
+   - Authorized JavaScript origins: `https://www.buzzkill.study` and `https://buzzkill.study`
    - Authorized redirect URI: `https://qlfqgyrwrihwomadqjsh.supabase.co/auth/v1/callback`
 3. Copy the **Client ID** and **Client secret**.
 4. Supabase → **Authentication → Sign In / Providers → Google** → turn on → paste both → Save.

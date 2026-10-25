@@ -2,6 +2,10 @@
 #This project is for the Fall26 hackathon this project is a study app that calls you names if you pick up your phone and o turn it off you have to shake it!
 
 
+## Website
+
+Live at **https://www.buzzkill.study** (also https://buzzkill-psu.vercel.app).
+
 ## Hosting the website on Vercel
 
 1. Go to vercel.com → **Add New → Project** → import `jzps333/Buzzkill-PSU`.
