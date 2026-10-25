@@ -219,8 +219,8 @@ export function sleek() {
 
 
 // ---------------------------------------------------------------------------------------------
-// 3. CUTE: a softer, simpler mascot. Round head on a round body, big glossy eyes, small smile.
-//    No glasses, cap, pencil or cheeks.
+// 3. CUTE (the site's Buzz): a softer, simpler mascot. Round head on a round body, big glossy eyes,
+//    small smile, and his glasses. No cap, pencil or cheeks.
 // ---------------------------------------------------------------------------------------------
 export function cute() {
   const bee = new THREE.Group();
@@ -254,6 +254,24 @@ export function cute() {
     eyes.add(eye);
   }
   bee.add(eyes);
+
+  // Glasses: round frames that follow the curve of his head, a bridge, and arms back to the sides
+  const glasses = new THREE.Group();
+  glasses.position.set(0, 0.45, 0.1);
+  const lensMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.18, depthWrite: false });
+  for (const s of [-1, 1]) {
+    const frame = new THREE.Group();
+    frame.position.set(s * 0.22, 0.04, 0.55);
+    frame.rotation.y = s * 0.38;
+    frame.add(new THREE.Mesh(new THREE.TorusGeometry(0.155, 0.022, 10, 36), ink));
+    frame.add(new THREE.Mesh(new THREE.CircleGeometry(0.155, 36), lensMat));
+    glasses.add(frame);
+    glasses.add(tube([[s * 0.37, 0.07, 0.47], [s * 0.49, 0.08, 0.3], [s * 0.53, 0.06, 0.05]], 0.016, ink));
+  }
+  const bridge = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.018, 8, 16, Math.PI), ink);
+  bridge.position.set(0, 0.07, 0.6);
+  glasses.add(bridge);
+  bee.add(glasses);
 
   const smile = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.018, 8, 20, Math.PI), ink);
   smile.position.set(0, 0.25, 0.64);

@@ -3,6 +3,7 @@
     <script type="module" src="companion.js"></script>
 
   Desktop: he flies after your mouse and hovers just above and to the right of it, so he never covers what you click.
+  Move toward him and he stays put: hover = he looks at you, drag = spin him around, click = a flip.
   Phone: he rests in the bottom corner and flies to wherever you tap.
   Leave him alone for a few seconds and he wanders around nearby.
   Off when the user prefers reduced motion, on pages that set <body data-no-companion>, or with ?companion=off.
@@ -29,6 +30,8 @@ function start() {
   });
   document.body.append(el);
   const bee = mount(el, { follow: true });
+  const near = (x, y, r) => Math.hypot(x - (pos.x + size / 2), y - (pos.y + size / 2)) < r;
+  const over = (x, y) => x > pos.x && x < pos.x + size && y > pos.y && y < pos.y + size;
 
   // Where he rests on a phone, or before the mouse moves
   const rest = () => ({ x: innerWidth - size - 16, y: innerHeight - size - 24 });
@@ -46,7 +49,13 @@ function start() {
   }
 
   if (touch) addEventListener("pointerdown", e => aim(e.clientX - size / 2, e.clientY + size / 2), { passive: true });
-  else addEventListener("pointermove", e => aim(e.clientX, e.clientY), { passive: true });
+  else addEventListener("pointermove", e => {
+    // Over him: let the pointer reach him (and not the page underneath) so he can be hovered, spun and clicked
+    el.style.pointerEvents = over(e.clientX, e.clientY) || bee.busy ? "auto" : "none";
+    // Coming toward him, or playing with him: he stays put. Otherwise he follows.
+    if (bee.busy || near(e.clientX, e.clientY, size * 1.05)) { lastMove = performance.now(); return; }
+    aim(e.clientX, e.clientY);
+  }, { passive: true });
   addEventListener("resize", () => { if (touch) target = rest(); });
 
   let last = performance.now();
@@ -59,7 +68,7 @@ function start() {
     // Idle for a while: lazy loops around where he last stopped
     const idle = (now - lastMove) / 1000;
     let goal = target;
-    if (idle > 3) {
+    if (idle > 3 && !bee.busy) {
       const t = now / 1000;
       goal = { x: wanderFrom.x + Math.sin(t * 0.7) * 50, y: wanderFrom.y + Math.sin(t * 1.3) * 22 };
       goal.x = Math.min(innerWidth - size - 4, Math.max(4, goal.x));

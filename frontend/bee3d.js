@@ -7,7 +7,9 @@
         bz-mood-worried  worried face (where the design has one), darting eyes
         bz-panic         wings go crazy, he shakes
       follow: true = he's the companion: always animating, turns to face where he flies (see steer)
-      Returns { dispose(), steer(vx, vy) }.
+      Returns { dispose(), steer(vx, vy), busy }   (busy = someone is hovering or spinning him)
+
+  Play with him: hover = he turns to look at you, drag = spin him to see every side, click / tap = a flip.
 
   Designs (bee-designs.js): cute (the site's Buzz), honeybee, sleek, classic.
   Pick one with ?bee=sleek in the address; it's remembered on this device.
@@ -263,6 +265,41 @@ export function mount(el, { design = chosenDesign(), follow = false } = {}) {
   // Companion steering: which way he's flying
   let vx = 0, vy = 0, facing = 1, yaw = view.yaw, pitch = 0, bank = 0;
 
+  // Hover / drag / click
+  const me = { hover: false, lx: 0, ly: 0, look: 0, lookUp: 0, drag: false, yaw: 0, pitch: 0, spin: 0, released: -1e9, flip: 0 };
+  let px = 0, py = 0, pt = 0, moved = 0;
+  canvas.style.touchAction = "pan-y";           // vertical swipes still scroll the page on phones
+  canvas.style.cursor = "grab";
+  canvas.addEventListener("pointerenter", () => { me.hover = true; });
+  canvas.addEventListener("pointerleave", () => { me.hover = false; });
+  canvas.addEventListener("pointermove", e => {
+    const r = canvas.getBoundingClientRect();
+    me.lx = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width) * 2 - 1));
+    me.ly = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height) * 2 - 1));
+    if (!me.drag) return;
+    const dx = e.clientX - px, dy = e.clientY - py, now = performance.now();
+    me.yaw += dx * 0.014;
+    me.pitch = Math.max(-1.1, Math.min(1.1, me.pitch + dy * 0.01));
+    me.spin = (dx * 0.014) / Math.max(0.008, (now - pt) / 1000);
+    moved += Math.abs(dx) + Math.abs(dy);
+    px = e.clientX; py = e.clientY; pt = now;
+  });
+  canvas.addEventListener("pointerdown", e => {
+    me.drag = true; moved = 0; me.spin = 0;
+    px = e.clientX; py = e.clientY; pt = performance.now();
+    canvas.setPointerCapture(e.pointerId);
+    canvas.style.cursor = "grabbing";
+  });
+  const letGo = () => {
+    if (!me.drag) return;
+    me.drag = false;
+    me.released = performance.now();
+    canvas.style.cursor = "grab";
+    if (moved < 6) me.flip = 1;                 // a click, not a drag: do a flip
+  };
+  canvas.addEventListener("pointerup", letGo);
+  canvas.addEventListener("pointercancel", letGo);
+
   const seed = Math.random() * 100;
   let raf = 0, last = 0, nextBlink = 2 + Math.random() * 3, blink = 0, look = 0, lookTarget = 0, lookAt = 0;
   const eyesX = parts.eyes ? parts.eyes.position.x : 0;
@@ -291,17 +328,38 @@ export function mount(el, { design = chosenDesign(), follow = false } = {}) {
       pitch += (pitchTarget - pitch) * Math.min(1, dt * 6);
       bank += (Math.max(-0.4, Math.min(0.4, -vx * 0.01)) - bank) * Math.min(1, dt * 6);
     }
+    // Hovered: turn to look at the pointer
+    if (me.hover && !me.drag) yawTarget = me.lx * 0.8;
+    me.look += ((me.hover ? me.ly * 0.4 : 0) - me.look) * Math.min(1, dt * 6);
     yaw += (yawTarget - yaw) * Math.min(1, dt * (follow ? 5 : 3));
 
+    // Dragged: he keeps spinning a little after you let go, then turns back around
+    if (!me.drag) {
+      me.yaw += me.spin * dt;
+      me.spin *= Math.pow(0.04, dt);
+      if (Math.abs(me.spin) < 0.4 && ms - me.released > 900) {
+        me.yaw = Math.atan2(Math.sin(me.yaw), Math.cos(me.yaw));     // take the short way back
+        const back = Math.min(1, dt * 2.5);
+        me.yaw -= me.yaw * back;
+        me.pitch -= me.pitch * back;
+      }
+    }
+    // Clicked: a full flip with a little hop
+    me.flip = Math.max(0, me.flip - dt * 1.3);
+    const f = 1 - me.flip, flipping = me.flip > 0;
+    const flipTurn = flipping ? Math.PI * 2 * (f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2) : 0;
+    const hop = flipping ? Math.sin(Math.PI * f) * 0.35 : 0;
+
     // Hover in a lazy figure-eight, plus a tiny buzz jitter
-    rig.position.set(Math.sin(t * 0.9) * 0.12 * calm, Math.sin(t * 1.8) * 0.12 * calm, 0);
-    rig.rotation.set(follow ? pitch : 0, yaw, follow ? bank : Math.sin(t * 0.9) * 0.06 * calm);
+    rig.position.set(Math.sin(t * 0.9) * 0.12 * calm, Math.sin(t * 1.8) * 0.12 * calm + hop, 0);
+    rig.rotation.set((follow ? pitch : 0) + me.pitch + me.look, yaw + me.yaw + flipTurn,
+      follow ? bank : Math.sin(t * 0.9) * 0.06 * calm);
     const jitter = (panic ? 0.06 : 0.012) * calm;
     parts.bee.position.set((Math.random() - 0.5) * jitter, (Math.random() - 0.5) * jitter, 0);
     parts.bee.rotation.z = panic ? Math.sin(t * 40) * 0.08 : 0;
 
     // Wings: a fast blur of flapping. Panic = even faster
-    const flap = Math.sin(t * (reduceMotion ? 8 : panic ? 70 : 38));
+    const flap = Math.sin(t * (reduceMotion ? 8 : panic ? 70 : me.hover || me.drag ? 50 : 38));
     for (const w of parts.wings) w.pose(flap);
 
     // Wave hello (happy), or flail (panic)
@@ -318,7 +376,7 @@ export function mount(el, { design = chosenDesign(), follow = false } = {}) {
       parts.eyes.scale.y = blink > 0 ? 0.15 : 1;
       // Worried: eyes dart around
       if (worried && t > lookAt) { lookTarget = (Math.random() - 0.5) * 0.12; lookAt = t + 0.4 + Math.random() * 0.6; }
-      if (!worried) lookTarget = 0;
+      if (!worried) lookTarget = me.hover ? me.lx * 0.05 : 0;      // eyes follow the pointer
       look += (lookTarget - look) * Math.min(1, dt * 12);
       parts.eyes.position.x = eyesX + look;
     }
@@ -329,6 +387,7 @@ export function mount(el, { design = chosenDesign(), follow = false } = {}) {
 
   return {
     steer(x, y) { vx = x; vy = y; },
+    get busy() { return me.hover || me.drag || me.flip > 0; },
     dispose() {
       cancelAnimationFrame(raf);
       ro.disconnect();
