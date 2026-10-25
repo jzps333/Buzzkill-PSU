@@ -19,8 +19,8 @@ const ALLOWED_ORIGINS = ["https://www.buzzkill.study", "https://buzzkill.study",
 const VOICE = Deno.env.get("ELEVENLABS_VOICE_ID") ?? "JBFqnCBsd6RMkjVDRZzb";      // "George"
 // "-latest" names always point at Google's current model, so they don't break when old ones shut down
 // Fastest first: Flash-Lite writes a 1-line roast in well under a second
-// The smarter Flash model writes funnier lines; Flash-Lite is the fast backup. (The next line is written while one plays, so speed matters less.)
-const MODELS = [Deno.env.get("GEMINI_MODEL"), "gemini-flash-latest", "gemini-3-flash-preview", "gemini-flash-lite-latest", "gemini-3.1-flash-lite"]
+// Fastest first: Flash-Lite writes a line in 1-2 seconds (the bigger Flash model took 13+ seconds)
+const MODELS = [Deno.env.get("GEMINI_MODEL"), "gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3-flash-preview"]
   .filter(Boolean) as string[];
 
 const FALLBACKS = [
@@ -99,7 +99,8 @@ async function writeRoast(facts: string, name: string, avoid: string[] = [], aga
   const key = Deno.env.get("GEMINI_API_KEY");
   const v3 = VOICES[0].model.includes("v3");
   const style = STYLES[(seed + again) % STYLES.length];      // a different voice for each line of the same pickup
-  const sound = Math.random() < 0.5 ? pick(SOUNDS) : null;
+  // Sound effects take turns too: every other line, never the same one twice in a row
+  const sound = (seed + again) % 2 === 0 ? SOUNDS[(seed + again * 3) % SOUNDS.length] : null;
   const prompt = `You are Buzz, a funny bee who gently roasts college students out loud when they pick up their phone during a group study session. Everyone at the table hears it.
 
 Write ONE brand-new line, 6 to 16 words, that uses their name. Short and punchy: one joke, then stop.
