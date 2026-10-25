@@ -4,31 +4,116 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Buzzkill · Game</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    body { font-family: system-ui, sans-serif; background: #111; color: #eee; max-width: 420px; margin: 0 auto; padding: 32px 16px; text-align: center; }
-    #big { font-size: 64px; margin: 24px 0 8px; }
-    #status { font-size: 20px; font-weight: 600; }
-    #hint { color: #999; margin-top: 8px; }
-    button { width: 100%; padding: 16px; margin-top: 24px; border: 0; border-radius: 10px; background: #f5c542; color: #111; font-size: 18px; font-weight: 700; }
-    #debug { margin-top: 32px; color: #555; font-size: 12px; font-family: ui-monospace, monospace; }
+    :root {
+      --cream: #FFFAEB; --honey: #F5D35A; --honey-deep: #E9BF2E; --sand: #F4EEDC;
+      --ink: #1F1B16; --ink-2: #5E574B; --charcoal: #2B2822; --red: #E5484D;
+      --font: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100svh;
+      background: var(--cream);
+      color: var(--ink);
+      font: 600 16px/1.5 var(--font);
+      text-align: center;
+      -webkit-font-smoothing: antialiased;
+    }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
+    .page { width: min(420px, 100%); margin: 0 auto; padding: 20px 16px 32px; }
+    .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; font-weight: 800; }
+    .room { padding: 6px 12px; border-radius: 999px; background: var(--sand); font-size: 13px; letter-spacing: 1px; }
+
+    .card { padding: 28px 20px 24px; border-radius: 26px; background: var(--honey); }
+    .bee { width: 150px; margin: 0 auto 8px; }
+    #status { margin: 0; font-size: 30px; line-height: 1.1; font-weight: 800; letter-spacing: -.6px; }
+    #hint { margin: 8px auto 0; max-width: 30ch; color: #3E3420; font-size: 15px; }
+    button.main {
+      width: 100%;
+      height: 54px;
+      margin-top: 20px;
+      border: 0;
+      border-radius: 14px;
+      background: var(--ink);
+      color: #fff;
+      font: 800 17px var(--font);
+      cursor: pointer;
+    }
+    #debug { margin-top: 24px; color: #B5AC98; font: 500 11px ui-monospace, monospace; }
+
+    /* ---------- Busted: full screen, Buzz bounces with every shake ---------- */
+    .busted {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      padding: 22px 18px 26px;
+      background: var(--charcoal);
+      color: #fff;
+      animation: alarm 1s steps(1) infinite;
+    }
+    @keyframes alarm { 50% { box-shadow: inset 0 0 0 8px var(--red); } }
+    .busted.done { animation: none; }
+    .b-label { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #BDB4A0; }
+    .arena { position: relative; flex: 1; min-height: 220px; display: grid; place-items: center; margin: 12px 0 14px; border-radius: 22px; background: #34302A; overflow: hidden; overflow: clip; }
+    .arena .bz-bee { width: 160px; }
+    .b-title { margin: 0; font-size: 40px; font-weight: 800; letter-spacing: -1px; }
+    .b-roast { margin: 2px 0 16px; color: #D8D0BE; font-size: 15px; }
+    .b-hint { margin: 0 0 10px; font-weight: 800; }
+    .b-meter { height: 12px; border-radius: 99px; background: #4A453B; overflow: hidden; }
+    .b-meter span { display: block; height: 100%; width: 0; border-radius: 99px; background: var(--honey); transition: width .1s linear; }
+    .b-secs { margin: 10px 0 0; color: #D8D0BE; font-variant-numeric: tabular-nums; }
+
+    @media (prefers-reduced-motion: reduce) { .busted { animation: none; box-shadow: inset 0 0 0 8px var(--red); } }
   </style>
 </head>
 <body>
-  <h1>Buzzkill</h1>
-  <div id="big">📵</div>
-  <div id="status">Joining…</div>
-  <div id="hint"></div>
-  <button id="start" hidden>I'm ready</button>
-  <div id="debug"></div>
+  <main class="page">
+    <div class="top"><span>Buzzkill</span><span class="room" id="roomTag" hidden></span></div>
+    <div class="card">
+      <div class="bee" id="bee"></div>
+      <h1 id="status">Joining…</h1>
+      <p id="hint"></p>
+      <button class="main" id="start" hidden>I'm ready</button>
+    </div>
+    <div id="debug"></div>
+  </main>
+
+  <!-- Busted: shown while YOUR alarm is on -->
+  <section class="busted" id="busted" role="alert" hidden>
+    <p class="b-label">Pickup detected</p>
+    <div class="arena" id="arena"><div id="busyBee"></div></div>
+    <h2 class="b-title" id="bTitle">Busted</h2>
+    <p class="b-roast" id="bRoast"></p>
+    <p class="b-hint" id="bHint">Shake your phone to send Buzz away</p>
+    <div class="b-meter"><span id="bFill"></span></div>
+    <p class="b-secs" id="bSecs">0.0 / 10 seconds</p>
+  </section>
 
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
+  <script src="buzz.js"></script>
   <script>
     // Room codes are only letters and numbers. Anything else is ignored.
     const rawRoom = new URLSearchParams(location.search).get("room") || "";
     const room = /^[A-Za-z0-9]{4,12}$/.test(rawRoom) ? rawRoom.toUpperCase() : null;
     const $ = id => document.getElementById(id);
-    const show = (big, status, hint = "") => { $("big").textContent = big; $("status").textContent = status; $("hint").textContent = hint; };
+
+    // Buzz on the main card: happy normally, worried when something's wrong
+    Buzz.bee($("bee"));
+    $("bee").classList.add("bz-float");
+    const show = (mood, status, hint = "") => {
+      Buzz.setMood($("bee"), mood);
+      $("status").textContent = status;
+      $("hint").textContent = hint;
+    };
 
     let token = null;          // login token, sent with every event
     let gameStatus = null;     // waiting / live / ended
@@ -54,7 +139,8 @@
     async function join() {
       const { data: { session } } = await sb.auth.getSession();
       if (!session) {                                         // not logged in → login page, then come back
-        location.href = "login?next=" + encodeURIComponent(location.pathname + location.search);
+        // not signed in → landing page with the PIN filled in, then nickname, then back here
+        location.href = room ? "/?room=" + room : "/";
         return;
       }
       token = session.access_token;
@@ -62,14 +148,16 @@
 
       const { data: game } = await sb.from("games").select("status").eq("code", room).maybeSingle();
       if (!room || !game || game.status === "ended") {
-        show("🚫", "No game running", "Tap the brick, or go to buzzkill.study/dashboard to join with a code.");
+        show("worried", "No game running", "Tap the brick, or enter a game PIN on buzzkill.study.");
         return;
       }
+      $("roomTag").textContent = room;
+      $("roomTag").hidden = false;
       send("join");
       setStatus(game.status);
       $("start").hidden = false;
 
-      // Watch live: the game (waiting → live → ended) and MY alarm (on/off, shakes left)
+      // Watch live: the game (waiting → live → ended) and MY alarm (on/off, progress)
       const me = session.user.id;
       sb.channel("game-" + room)
         .on("postgres_changes",
@@ -83,30 +171,120 @@
 
     function setStatus(s) {
       gameStatus = s;
-      if (s === "waiting") show("⏳", "You're in!", "Waiting for 4+ players. Then tap the brick to start.");
-      if (s === "live")    show("📵", "Game on", "Phone face down. Don't touch it.");
-      if (s === "ended")   { show("🏁", "Game over", "Loading results…"); stopMotion(); setTimeout(() => location.href = "results?room=" + room, 2000); }
+      if (s === "waiting") show("happy", "You're in!", "Waiting for 4+ players. Then tap the brick to start.");
+      if (s === "live")    show("happy", "Phones down.", "Face down on the brick. Buzz is watching.");
+      if (s === "ended")   { hideBusted(); show("happy", "Game over", "Loading results…"); stopMotion(); setTimeout(() => location.href = "results?room=" + room, 2000); }
     }
 
-    // The database decides when your alarm is on and how long you still have to shake
+    // ---------- 3. BUSTED: 10 seconds of real shaking, Buzz bounces on every shake ----------
+    // The database measures shaking time from the "shake" messages (about 2 a second while
+    // you shake) and decides when you're done. This screen shows the same clock with Buzz.
+    let shakeSeconds = 10;     // replaced by the database's shake_secs_needed
+    const TICK_MS = 500;       // one "shake" message per half second of shaking
+    const ROASTS = [
+      "Your textbook misses you. Buzz noticed.",
+      "That notification was not an emergency.",
+      "Bold move, during finals.",
+      "Everyone at the table saw that.",
+      "Buzz is disappointed. Mostly in you.",
+    ];
+    const busyBee = $("busyBee");
+    Buzz.bee(busyBee, "worried");
+    let bustedOn = false;
+    let shaking = false, lastShakeAt = 0;
+
+    const meter = Buzz.meter({
+      seconds: shakeSeconds,
+      tickMs: TICK_MS,
+      onProgress: (f, ms) => {
+        $("bFill").style.width = (f * 100).toFixed(1) + "%";
+        $("bSecs").textContent = `${(ms / 1000).toFixed(1)} / ${shakeSeconds} seconds`;
+      },
+      onTick: () => send("shake"),           // the database adds up shaking time and turns the alarm off
+      onDone: () => {
+        $("busted").classList.add("done");
+        Buzz.home(busyBee);
+        Buzz.setMood(busyBee, "happy");
+        busyBee.classList.remove("bz-panic");
+        $("bTitle").textContent = "Silenced";
+        $("bHint").textContent = "Buzz flew off. Put your phone back face down.";
+        // If a tick got lost on the network, top it up until the database agrees
+        let extra = 0;
+        clearInterval(topUp);
+        topUp = setInterval(() => {
+          if (!alarmOn || ++extra > 6) { clearInterval(topUp); return; }
+          send("shake");
+        }, 600);
+      },
+    });
+    let topUp = null;
+
+    function showBusted() {
+      if (bustedOn) return;
+      bustedOn = true;
+      shaking = false;
+      meter.reset();
+      meter.start();
+      $("busted").classList.remove("done");
+      $("bTitle").textContent = "Busted";
+      $("bRoast").textContent = ROASTS[Math.floor(Math.random() * ROASTS.length)];
+      $("bHint").textContent = "Shake your phone to send Buzz away";
+      Buzz.home(busyBee);
+      Buzz.setMood(busyBee, "worried");
+      busyBee.classList.add("bz-panic");
+      $("busted").hidden = false;
+      if (navigator.vibrate) navigator.vibrate([200, 80, 200]);
+    }
+
+    function hideBusted() {
+      bustedOn = false;
+      clearInterval(topUp);
+      meter.stop();
+      $("busted").hidden = true;
+    }
+
+    function onShake() {
+      if (!bustedOn || $("bTitle").textContent !== "Busted") return;
+      meter.jolt();
+      lastShakeAt = Date.now();
+      if (!shaking) { shaking = true; $("bHint").textContent = "Keep going! The alarm is paused while you shake."; }
+      Buzz.bounce(busyBee, $("arena"));
+    }
+
+    // Stopped shaking early? No hard shake for 1.2 seconds = the sound comes back.
+    setInterval(() => {
+      if (shaking && Date.now() - lastShakeAt > 1200) {
+        shaking = false;
+        if (bustedOn && $("bTitle").textContent === "Busted") {
+          $("bHint").textContent = "You stopped, so the alarm is back. Keep shaking!";
+          if (alarmOn) send("shake_stop");
+        }
+      }
+    }, 300);
+
+    // The database decides when your alarm is really on or off
     let alarmOn = false;
     function setAlarm(r) {
       alarmOn = r.alarm_on && gameStatus === "live";
       if (alarmOn) {
-        const left = Math.max(0, Math.ceil(r.shake_secs_needed - r.shake_secs_done));
-        if (r.is_shaking) show("🫨", "Shaking… sound paused", `${left}s left. Don't stop or it comes back!`);
-        else              show("🚨", "BUSTED", `Shake it to shut it up! ${left}s of shaking left.`);
+        showBusted();
+        if (r.shake_secs_needed && Number(r.shake_secs_needed) !== shakeSeconds) {
+          shakeSeconds = Number(r.shake_secs_needed);
+          meter.setSeconds(shakeSeconds);
+        }
+        meter.sync(Number(r.shake_secs_done || 0) * 1000);   // stay in step with the database's clock
       } else if (gameStatus === "live") {
-        show("😮‍💨", "Alarm off", `Pickup #${r.pickups} counted. Put it back face down.`);
+        hideBusted();
+        show("happy", "Alarm off", `Pickup #${r.pickups} counted. Put it back face down.`);
       }
     }
 
-    // ---------- 3. "I'm ready" button: permissions ----------
+    // ---------- 4. "I'm ready" button: permissions ----------
     $("start").onclick = async () => {
       // iPhone needs a button tap to allow motion. Android skips this.
       if (typeof DeviceMotionEvent?.requestPermission === "function") {
         if (await DeviceMotionEvent.requestPermission() !== "granted") {
-          show("⚠️", "Motion access needed", "Reload and tap Allow.");
+          show("worried", "Motion access needed", "Reload and tap Allow.");
           return;
         }
       }
@@ -116,57 +294,39 @@
       $("hint").textContent = "Now put your phone face down.";
     };
 
-    // ---------- 4. Motion: pickup + shake ----------
-    let baseline = null, isDown = false, lastPickup = 0, shakeTimes = [];
-    let shaking = false, lastJolt = 0;
-
-    // 4d. Stopped shaking? No hard jolt for 1.2 seconds = you stopped, so the sound comes back.
-    setInterval(() => {
-      if (shaking && Date.now() - lastJolt > 1200) {
-        shaking = false;
-        if (alarmOn) send("shake_stop");
-      }
-    }, 300);
+    // ---------- 5. Motion: pickup + shake ----------
+    let baseline = null, isDown = false, lastPickup = 0, lastJolt = 0;
 
     function onMotion(e) {
       const g = e.accelerationIncludingGravity;
       if (!g || g.x === null) return;
       const v = [g.x, g.y, g.z];
 
-      // 4a. Remember which way gravity points when the phone first lies flat
+      // 5a. Remember which way gravity points when the phone first lies flat
       if (!baseline) {
-        if (Math.abs(g.z) > 9) { baseline = v; isDown = true; $("hint").textContent = "✅ Locked in. Don't touch it."; }
+        if (Math.abs(g.z) > 9) { baseline = v; isDown = true; $("hint").textContent = "Locked in. Don't touch it."; }
         return;
       }
 
-      // 4b. Pickup: compare gravity now vs. lying flat (cosine similarity)
+      // 5b. Pickup: compare gravity now vs. lying flat (cosine similarity)
       const sim = cosine(v, baseline);
       if (isDown && sim < 0.7) {                         // tilted more than ~45°
         isDown = false;
         if (gameStatus === "live" && Date.now() - lastPickup > 2000) {
           lastPickup = Date.now();
           send("pickup");
-          show("🚨", "BUSTED", "Shake your phone to shut it up.");
+          showBusted();                                   // show Buzz right away; the database confirms
         }
       } else if (!isDown && sim > 0.95) {                 // back flat
         isDown = true;
-        if (gameStatus === "live" && !alarmOn) show("📵", "Game on", "Phone face down. Don't touch it.");
+        if (gameStatus === "live" && !alarmOn && !bustedOn) show("happy", "Phones down.", "Face down on the brick. Buzz is watching.");
       }
 
-      // 4c. Shake: while your alarm is on, send "shake" about twice a second as long as you keep shaking.
-      //     The database turns that into shaking time: 30s for your 1st pickup, 60s for the 2nd, and so on.
-      //     While you shake, the sound pauses. Stop early and it comes back (see 4d).
+      // 5c. Shake: every hard jolt bounces Buzz and keeps the 10-second clock running
       const a = e.acceleration;
       const strength = (a && a.x !== null) ? Math.hypot(a.x, a.y, a.z) : Math.abs(Math.hypot(...v) - 9.8);
-      if (strength > 18 && alarmOn) {
-        const now = Date.now();
-        lastJolt = now;
-        shaking = true;
-        if (now - (shakeTimes[0] || 0) > 400) {           // at most ~2 messages per second
-          shakeTimes = [now];
-          send("shake");
-        }
-      }
+      const now = performance.now();
+      if (strength > 13 && now - lastJolt > 110) { lastJolt = now; onShake(); }
 
       $("debug").textContent = `sim ${sim.toFixed(2)} · force ${strength.toFixed(1)}`;
     }
@@ -178,10 +338,10 @@
 
     function stopMotion() { window.removeEventListener("devicemotion", onMotion); }
 
-    // ---------- 5. Keep the screen on ----------
+    // ---------- 6. Keep the screen on ----------
     async function keepAwake() { try { await navigator.wakeLock.request("screen"); } catch {} }
 
-    // ---------- 6. Leaving the page counts as a pickup ----------
+    // ---------- 7. Leaving the page counts as a pickup ----------
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") {
         if (gameStatus === "live") send("left_page");

@@ -3,49 +3,647 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Buzzkill · Put the phone down</title>
-  <meta name="description" content="A study app that calls you names when you pick up your phone. To turn it off, you have to shake it.">
+  <title>Buzzkill</title>
+  <meta name="description" content="A study game for four or more friends. Whoever touches their phone first gets buzzed.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --cream: #FFFAEB;
+      --honey: #F5D35A;
+      --honey-deep: #E9BF2E;
+      --sand: #F4EEDC;
+      --peach: #F7E4BF;
+      --ink: #1F1B16;
+      --ink-2: #5E574B;
+      --line: #EAE2CC;
+      --white: #FFFFFF;
+      --charcoal: #2B2822;
+      --green: #3BAA6A;
+
+      --font: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    }
+
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #eee; line-height: 1.5; }
-    main { max-width: 640px; margin: 0 auto; padding: 14vh 20px 48px; text-align: center; }
-    h1 { font-size: clamp(3rem, 14vw, 5.5rem); margin: 0; letter-spacing: -0.03em; color: #f5c542; }
-    .tag { font-size: 1.25rem; color: #ccc; margin: 8px 0 32px; }
-    .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
-    .btn { display: inline-block; padding: 14px 24px; border-radius: 10px; font-size: 1rem; font-weight: 600; text-decoration: none; }
-    .primary { background: #f5c542; color: #111; }
-    .secondary { background: #222; color: #eee; border: 1px solid #333; }
-    ol { list-style: none; padding: 0; margin: 56px 0 0; display: grid; gap: 12px; text-align: left; }
-    li { background: #1b1b1b; border: 1px solid #2a2a2a; border-radius: 12px; padding: 16px 18px; }
-    li b { color: #f5c542; }
-    footer { margin-top: 40px; color: #777; font-size: 0.85rem; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--cream);
+      color: var(--ink);
+      font: 500 16px/1.55 var(--font);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+
+    .wrap { width: min(1040px, 100% - 32px); margin: 0 auto; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 44px;
+      padding: 0 20px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--ink);
+      color: var(--white);
+      font: 700 14px var(--font);
+      text-decoration: none;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .btn:hover { background: #3A332A; }
+    .btn:disabled { opacity: .6; cursor: wait; }
+
+    .eyebrow { margin: 0 0 10px; font-size: 12px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #8A6B12; }
+
+    /* ---------------- Nav ---------------- */
+    .nav { display: flex; align-items: center; justify-content: space-between; height: 72px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; text-decoration: none; }
+    .brand-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--honey); display: grid; place-items: center; }
+    .nav-links { display: flex; align-items: center; gap: 22px; font-size: 14px; font-weight: 700; }
+    .nav-links a:not(.btn) { text-decoration: none; }
+    .nav-links a:not(.btn):hover { text-decoration: underline; }
+    .nav-links .btn { height: 38px; padding: 0 16px; }
+
+    /* ---------------- Hero card ---------------- */
+    .hero { padding: 12px 0 28px; }
+    .hive {
+      width: min(760px, 100%);
+      margin: 0 auto;
+      padding: 44px 40px 40px;
+      border-radius: 28px;
+      background: var(--honey);
+      text-align: center;
+    }
+    .hive h1 { margin: 0 0 22px; font-size: clamp(36px, 6vw, 56px); line-height: 1.05; font-weight: 800; letter-spacing: -1.4px; }
+    .pin-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: min(560px, 100%);
+      margin: 0 auto;
+      padding: 7px 7px 7px 20px;
+      border: 2px solid var(--ink);
+      border-radius: 16px;
+      background: var(--white);
+    }
+    .pin-box input {
+      flex: 1;
+      min-width: 0;
+      height: 48px;
+      border: 0;
+      outline: none;
+      background: transparent;
+      color: var(--ink);
+      font: 700 18px var(--font);
+      letter-spacing: 2px;
+    }
+    .pin-box input::placeholder { color: #8C8576; letter-spacing: 1.5px; font-weight: 600; }
+    #pin { text-transform: uppercase; }
+    #pin::placeholder { text-transform: none; }
+    .pin-box .btn { height: 48px; border-radius: 11px; padding: 0 22px; }
+    .hive.wrong .pin-box { animation: wrong .35s; }
+    @keyframes wrong { 25% { transform: translateX(-8px); } 50% { transform: translateX(6px); } 75% { transform: translateX(-3px); } }
+
+    .name-step p { margin: 0 0 12px; font-weight: 700; }
+    .msg { min-height: 1.5em; margin: 12px 0 0; font-size: 14px; font-weight: 700; }
+    .msg.bad { color: #9B1C1C; }
+    .live { display: inline-flex; align-items: center; gap: 7px; margin: 2px 0 26px; font-size: 13px; font-weight: 700; color: #5A4710; }
+    .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+    .hive h2 { margin: 0 0 10px; font-size: clamp(22px, 3vw, 28px); line-height: 1.2; font-weight: 800; letter-spacing: -.5px; }
+    .hive .lead { margin: 0 auto; max-width: 56ch; font-size: 15px; color: #3E3420; }
+
+    /* ---------------- Meet Buzz ---------------- */
+    .meet {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin: 22px 0 0;
+      padding: 18px 22px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--white);
+    }
+    .meet .mini-bee { flex: none; width: 74px; }
+    .meet h3 { margin: 0 0 2px; font-size: 19px; font-weight: 800; letter-spacing: -.3px; }
+    .meet p { margin: 0; font-size: 14px; color: var(--ink-2); max-width: 52ch; }
+    .meet .btn { margin-left: auto; }
+
+    /* ---------------- Feature cards with phones ---------------- */
+    .features { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 56px 0 0; }
+    .feature {
+      display: flex;
+      flex-direction: column;
+      padding: 28px 24px 22px;
+      border-radius: 24px;
+      overflow: hidden;
+    }
+    .feature.sand { background: var(--sand); }
+    .feature.peach { background: var(--peach); }
+    .feature h3 { margin: 0 0 4px; font-size: 22px; line-height: 1.2; font-weight: 800; letter-spacing: -.4px; }
+    .feature > p { margin: 0 0 22px; font-size: 14px; color: var(--ink-2); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .chip { padding: 6px 12px; border-radius: 999px; background: var(--white); font-size: 12px; font-weight: 700; }
+
+    .phone {
+      width: 236px;
+      margin: 0 auto;
+      padding: 9px;
+      border-radius: 38px;
+      background: var(--ink);
+    }
+    .screen {
+      position: relative;
+      height: 440px;
+      padding: 40px 16px 16px;
+      border-radius: 30px;
+      overflow: hidden;
+      overflow: clip;
+      text-align: center;
+    }
+    .screen::before {
+      content: ""; position: absolute; top: 10px; left: 50%;
+      width: 76px; height: 20px; margin-left: -38px; border-radius: 99px; background: var(--ink);
+    }
+    .screen.light { background: var(--white); }
+    .screen.dark { background: var(--charcoal); color: var(--white); }
+    .s-brand { margin: 0 0 14px; font-size: 11px; font-weight: 800; }
+    .s-label { margin: 0; font-size: 9px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #8C8576; }
+    .s-pin { margin: 2px 0 14px; font-size: 26px; font-weight: 800; letter-spacing: 3px; }
+    .s-count { margin: 0 0 6px; font-size: 10px; font-weight: 800; text-align: left; }
+    .s-bar { height: 5px; margin-bottom: 14px; border-radius: 99px; background: var(--sand); overflow: hidden; }
+    .s-bar span { display: block; height: 100%; width: 100%; background: var(--honey-deep); }
+    .s-player {
+      display: flex; align-items: center; gap: 9px;
+      padding: 8px 10px; margin-bottom: 7px;
+      border-radius: 10px; background: #FBF8EF;
+      font-size: 11px; font-weight: 700; text-align: left;
+    }
+    .s-player .av { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 800; background: var(--sand); }
+    .s-player .st { margin-left: auto; font-size: 9px; font-weight: 800; color: var(--green); }
+    .s-btn { margin-top: 12px; padding: 11px; border-radius: 10px; background: var(--ink); color: var(--white); font-size: 11px; font-weight: 800; }
+
+    .dark .s-label { color: #BDB4A0; }
+    .busted-bee-box { position: relative; height: 150px; display: grid; place-items: center; margin: 6px 0 4px; }
+    .busted-bee-box .bz-bee { width: 92px; }
+    .b-title { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -.6px; }
+    .b-roast { margin: 6px 0 14px; font-size: 11px; color: #D8D0BE; }
+    .b-hint { margin: 0 0 8px; font-size: 10px; font-weight: 800; }
+    .b-meter { height: 7px; border-radius: 99px; background: #4A453B; overflow: hidden; }
+    .b-meter span { display: block; height: 100%; width: 67%; background: var(--honey); border-radius: 99px; }
+    .b-secs { margin: 8px 0 0; font-size: 10px; font-weight: 700; color: #D8D0BE; font-variant-numeric: tabular-nums; }
+
+    /* ---------------- Steps ---------------- */
+    .steps { padding: 72px 0 0; }
+    .steps h2, .board h2 { margin: 0 0 18px; font-size: clamp(26px, 3.4vw, 32px); line-height: 1.15; font-weight: 800; letter-spacing: -.7px; }
+    .step-list { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 0; padding: 0; list-style: none; counter-reset: s; }
+    .step-list li { counter-increment: s; padding: 20px 18px; border-radius: 18px; background: var(--sand); }
+    .step-list li::before {
+      content: counter(s);
+      display: grid; place-items: center;
+      width: 26px; height: 26px; margin-bottom: 14px;
+      border-radius: 8px; background: var(--honey);
+      font-size: 12px; font-weight: 800;
+    }
+    .step-list b { display: block; margin-bottom: 4px; font-size: 16px; font-weight: 800; }
+    .step-list span { font-size: 13px; color: var(--ink-2); }
+
+    /* ---------------- Leaderboard ---------------- */
+    .board { padding: 56px 0 72px; }
+    .board-card { padding: 30px; border: 1px solid var(--line); border-radius: 24px; background: var(--white); }
+    .board-card h2 { margin-bottom: 6px; }
+    .board-card > p { margin: 0 0 20px; font-size: 14px; color: var(--ink-2); }
+    .rows { display: grid; gap: 8px; margin-bottom: 22px; }
+    .row { display: flex; align-items: center; gap: 16px; padding: 12px 16px; border-radius: 12px; background: #FBF8EF; font-size: 14px; font-weight: 700; }
+    .row:first-child { background: #F8E7A6; }
+    .row .rank { width: 22px; font-size: 12px; font-weight: 800; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+    .row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row .val { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+    .empty { color: var(--ink-2); font-size: 14px; }
+
+    footer { padding: 26px 0 36px; border-top: 1px solid var(--line); }
+    footer .wrap { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; font-weight: 700; }
+    footer .brand { font-size: 18px; }
+
+    /* ---------------- Busted demo overlay ---------------- */
+    .demo {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      background: rgba(31, 27, 22, .55);
+    }
+    .demo-card {
+      position: relative;
+      width: min(400px, 100%);
+      padding: 28px 24px 24px;
+      border-radius: 28px;
+      background: var(--charcoal);
+      color: var(--white);
+      text-align: center;
+    }
+    .demo-card.ringing { animation: ring 1s steps(1) infinite; }
+    @keyframes ring { 50% { box-shadow: 0 0 0 6px #E5484D; } }
+    .demo-label { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #BDB4A0; }
+    .arena { position: relative; height: 260px; display: grid; place-items: center; margin: 8px 0 6px; overflow: hidden; overflow: clip; border-radius: 18px; background: #34302A; }
+    .arena .bz-bee { width: 120px; }
+    .demo-card h3 { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -.8px; }
+    .demo-card .roast { margin: 4px 0 16px; font-size: 14px; color: #D8D0BE; }
+    .demo-card .hint { margin: 0 0 8px; font-size: 13px; font-weight: 800; }
+    .demo-meter { height: 10px; border-radius: 99px; background: #4A453B; overflow: hidden; }
+    .demo-meter span { display: block; height: 100%; width: 0; background: var(--honey); border-radius: 99px; }
+    .demo-secs { margin: 8px 0 16px; font-size: 13px; font-weight: 700; color: #D8D0BE; font-variant-numeric: tabular-nums; }
+    .hold {
+      width: 100%;
+      height: 52px;
+      border: 0;
+      border-radius: 14px;
+      background: var(--honey);
+      color: var(--ink);
+      font: 800 15px var(--font);
+      cursor: pointer;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .hold:active { background: var(--honey-deep); }
+    .demo-close { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: #3E3A33; color: var(--white); font: 700 18px/1 var(--font); cursor: pointer; }
+
+    /* ---------------- Responsive ---------------- */
+    @media (max-width: 860px) {
+      .features { grid-template-columns: 1fr; }
+      .step-list { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px) {
+      .nav-links a:not(.btn) { display: none; }
+      .hive { padding: 32px 18px 28px; border-radius: 24px; }
+      .pin-box { flex-direction: column; align-items: stretch; padding: 8px; }
+      .pin-box input { text-align: center; }
+      .pin-box .btn { width: 100%; }
+      .meet { flex-wrap: wrap; }
+      .meet .mini-bee { width: 60px; }
+      .meet .btn { margin-left: 0; width: 100%; }
+      .step-list { grid-template-columns: 1fr; }
+      .board-card { padding: 22px 18px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .hive.wrong .pin-box, .demo-card.ringing { animation: none; }
+    }
   </style>
 </head>
 <body>
+
+  <div class="wrap">
+    <nav class="nav">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3c-3.6 0-6 2.7-6 6.3V14l-2 3h16l-2-3V9.3C18 5.7 15.6 3 12 3z" fill="#1F1B16"/><circle cx="12" cy="19.5" r="2.2" fill="#1F1B16"/></svg>
+        </span>
+        Buzzkill
+      </a>
+      <div class="nav-links">
+        <a href="#how">How it works</a>
+        <a href="/leaderboard">Leaderboard</a>
+        <a class="btn" href="/login" id="loginLink">Log in</a>
+      </div>
+    </nav>
+  </div>
+
   <main>
-    <h1>Buzzkill</h1>
-    <p class="tag">Put the phone down. We're watching.</p>
+    <!-- ================= Hero: join your hive ================= -->
+    <section class="hero">
+      <div class="wrap">
+        <div class="hive" id="hive">
+          <p class="eyebrow">Got a game PIN? You're in.</p>
+          <h1>Join your hive.</h1>
 
-    <div class="cta">
-      <a class="btn primary" id="mainBtn" href="/login">Log in / Sign up</a>
-      <a class="btn secondary" href="/leaderboard">View the leaderboard</a>
-    </div>
+          <form class="pin-box" id="pinForm">
+            <input id="pin" placeholder="Enter game PIN" maxlength="12" autocomplete="off" autocapitalize="characters"
+                   spellcheck="false" aria-label="Game PIN" required>
+            <button class="btn" id="pinBtn">Join game</button>
+          </form>
 
-    <ol>
-      <li><b>1. Study.</b> Start a session and put your phone down.</li>
-      <li><b>2. Get caught.</b> Pick it up and Buzzkill calls you names.</li>
-      <li><b>3. Shake to stop.</b> The only way to turn it off is to shake it. Every slip costs you on the leaderboard.</li>
-    </ol>
+          <div class="name-step" id="nameStep" hidden>
+            <p>Game <span id="pinShown"></span> found. What should we call you?</p>
+            <form class="pin-box" id="nameForm">
+              <input id="nick" placeholder="Nickname" maxlength="16" autocomplete="off" aria-label="Nickname" required>
+              <button class="btn" id="nameBtn">Enter lobby</button>
+            </form>
+          </div>
 
-    <footer>Built for the Fall 2026 PSU hackathon.</footer>
+          <p class="msg" id="msg" role="status"></p>
+          <p class="live" id="live" hidden><i></i><span id="liveText"></span></p>
+
+          <h2>Put the phone down. Your friends are watching.</h2>
+          <p class="lead">Everyone's phone goes face down on the brick. The first person to pick theirs up sets off the alarm, and the whole table sees their name.</p>
+        </div>
+
+        <div class="meet">
+          <div class="mini-bee" id="miniBee"></div>
+          <div>
+            <h3>Meet Buzz. Your focus wingman.</h3>
+            <p>Pick up your phone and Buzz is on your case. Shake for 10 seconds to send him bouncing away. Try the demo.</p>
+          </div>
+          <button class="btn" id="tryBtn">Try getting busted</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= Feature cards ================= -->
+    <section id="how">
+      <div class="wrap features">
+        <article class="feature sand">
+          <h3>Join in seconds, no download</h3>
+          <p>Tap your phone on the brick or type the PIN. Pick a nickname and you're in the lobby.</p>
+          <div class="phone" aria-hidden="true">
+            <div class="screen light">
+              <p class="s-brand">Buzzkill</p>
+              <p class="s-label">Game PIN</p>
+              <p class="s-pin">K7Q2M</p>
+              <p class="s-count">4 / 4 players</p>
+              <div class="s-bar"><span></span></div>
+              <div class="s-player"><span class="av">A</span>alex<span class="st">Ready</span></div>
+              <div class="s-player"><span class="av">M</span>maddie<span class="st">Ready</span></div>
+              <div class="s-player"><span class="av">J</span>jz<span class="st">Ready</span></div>
+              <div class="s-player"><span class="av">P</span>pratosh<span class="st">Ready</span></div>
+              <div class="s-btn">I'm ready</div>
+            </div>
+          </div>
+          <div class="chips"><span class="chip">Tap the brick</span><span class="chip">Or type a PIN</span><span class="chip">Guest or account</span></div>
+        </article>
+
+        <article class="feature peach">
+          <h3>Pick it up and everyone knows</h3>
+          <p>The brick sounds the alarm, and Buzz shows up on your screen until you've shaken for 10 seconds.</p>
+          <div class="phone" aria-hidden="true">
+            <div class="screen dark">
+              <p class="s-label">Pickup detected</p>
+              <div class="busted-bee-box"><div id="cardBee"></div></div>
+              <p class="b-title">Busted</p>
+              <p class="b-roast">Your textbook misses you. Buzz noticed.</p>
+              <p class="b-hint">Keep shaking to send Buzz away</p>
+              <div class="b-meter"><span></span></div>
+              <p class="b-secs">6.7 / 10 seconds</p>
+            </div>
+          </div>
+          <div class="chips"><span class="chip">+1 pickup</span><span class="chip">Buzz caught you</span><span class="chip">Shake for 10 seconds</span></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ================= Steps ================= -->
+    <section class="steps">
+      <div class="wrap">
+        <p class="eyebrow">Four friends. One simple rule.</p>
+        <h2>How a round works</h2>
+        <ol class="step-list">
+          <li><b>Join</b><span>Tap the brick or enter the PIN.</span></li>
+          <li><b>Phones down</b><span>Round starts at four players.</span></li>
+          <li><b>Don't touch it</b><span>Picking it up or switching apps sets off the brick.</span></li>
+          <li><b>Win the round</b><span>Fewest pickups per hour tops the leaderboard.</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ================= Leaderboard ================= -->
+    <section class="board">
+      <div class="wrap">
+        <div class="board-card">
+          <h2>Most focused this week</h2>
+          <p>Less picking up. More showing up.</p>
+          <div class="rows" id="rows"><p class="empty">Loading the leaderboard…</p></div>
+          <a class="btn" href="/leaderboard">See the full leaderboard</a>
+        </div>
+      </div>
+    </section>
   </main>
+
+  <footer>
+    <div class="wrap">
+      <span class="brand">Buzzkill.</span>
+      <span>Made at HackPSU, fall 2026.</span>
+    </div>
+  </footer>
+
+  <!-- ================= "Try getting busted" demo ================= -->
+  <div class="demo" id="demo" role="dialog" aria-modal="true" aria-labelledby="demoTitle" hidden>
+    <div class="demo-card" id="demoCard">
+      <button class="demo-close" id="demoClose" aria-label="Close demo">×</button>
+      <p class="demo-label">Pickup detected</p>
+      <div class="arena" id="arena"><div id="demoBee"></div></div>
+      <h3 id="demoTitle">Busted</h3>
+      <p class="roast" id="demoRoast">Your textbook misses you. Buzz noticed.</p>
+      <p class="hint" id="demoHint">Keep shaking to send Buzz away</p>
+      <div class="demo-meter"><span id="demoFill"></span></div>
+      <p class="demo-secs" id="demoSecs">0.0 / 10 seconds</p>
+      <button class="hold" id="holdBtn">Hold to shake</button>
+    </div>
+  </div>
+
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
+  <script src="buzz.js"></script>
   <script>
-    // Already logged in? The main button takes you to your dashboard.
+    const $ = id => document.getElementById(id);
+
+    Buzz.bee($("miniBee"));
+    $("miniBee").classList.add("bz-float");
+    Buzz.bee($("cardBee"), "worried");
+
+    /* ================= Join: PIN → nickname → lobby ================= */
+    let pin = null, session = null;
+
+    // Came from the brick (/?room=ABC12)? Fill in the PIN and check it right away.
+    const fromLink = new URLSearchParams(location.search).get("room");
+    const linkOk = fromLink && /^[A-Za-z0-9]{4,12}$/.test(fromLink);
+    if (linkOk) $("pin").value = fromLink.toUpperCase();
+
     sb.auth.getSession().then(({ data }) => {
-      if (data.session) { const b = document.getElementById("mainBtn"); b.textContent = "Go to dashboard"; b.href = "/dashboard"; }
+      session = data.session;
+      if (session && !session.user.is_anonymous) { $("loginLink").textContent = "My dashboard"; $("loginLink").href = "/dashboard"; }
+      if (linkOk) $("pinForm").requestSubmit();
     });
+
+    function say(text, bad) { $("msg").textContent = text; $("msg").className = "msg" + (bad ? " bad" : ""); }
+    function wobble() { const h = $("hive"); h.classList.remove("wrong"); void h.offsetWidth; h.classList.add("wrong"); }
+
+    $("pinForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const value = $("pin").value.trim().toUpperCase();
+      say("");
+      if (!/^[A-Z0-9]{4,12}$/.test(value)) { say("A game PIN is 4 to 12 letters and numbers.", true); wobble(); return; }
+      $("pinBtn").disabled = true;
+      try {
+        const { data: game, error } = await sb.from("games").select("status").eq("code", value).maybeSingle();
+        if (error) throw error;
+        if (!game) throw new Error("No game with that PIN. Check the brick and try again.");
+        if (game.status === "ended") throw new Error("That game has ended. Start a new one on the brick.");
+        pin = value;
+        if (session && !session.user.is_anonymous) return enter();   // logged in: skip the nickname
+        $("pinForm").hidden = true;
+        $("nameStep").hidden = false;
+        $("pinShown").textContent = pin;
+        $("nick").focus({ preventScroll: true });
+      } catch (err) {
+        say(err.message, true);
+        wobble();
+      } finally {
+        $("pinBtn").disabled = false;
+      }
+    });
+
+    $("nameForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const nick = $("nick").value.trim();
+      if (!nick) return;
+      $("nameBtn").disabled = true;
+      try {
+        if (!session) {
+          const { data, error } = await sb.auth.signInAnonymously({ options: { data: { username: nick } } });
+          if (error) throw error;
+          session = data.session;
+        } else {
+          await sb.from("profiles").update({ username: nick }).eq("id", session.user.id);
+        }
+        enter();
+      } catch (err) {
+        say(err.message, true);
+        wobble();
+        $("nameBtn").disabled = false;
+      }
+    });
+
+    function enter() { say("You're in. Opening the lobby…"); location.href = "/join?room=" + encodeURIComponent(pin); }
+
+    /* ================= Live count + leaderboard ================= */
+    async function loadLive() {
+      const { count } = await sb.from("games").select("code", { count: "exact", head: true }).in("status", ["waiting", "live"]);
+      $("live").hidden = !(count > 0);
+      if (count > 0) $("liveText").textContent = count === 1 ? "1 game running right now" : `${count} games running right now`;
+    }
+
+    async function loadBoard() {
+      const rows = $("rows");
+      const { data, error } = await sb.from("leaderboard").select("username, pickups_per_hour").limit(3);
+      rows.innerHTML = "";
+      if (error || !data || !data.length) {
+        const p = document.createElement("p");
+        p.className = "empty";
+        p.textContent = "No finished games yet. Play one and take the top spot.";
+        rows.append(p);
+        return;
+      }
+      data.forEach((p, i) => {
+        const row = document.createElement("div");
+        row.className = "row";
+        const rank = document.createElement("span"); rank.className = "rank"; rank.textContent = String(i + 1).padStart(2, "0");
+        const name = document.createElement("span"); name.className = "name"; name.textContent = p.username;   // textContent: safe
+        const val = document.createElement("span"); val.className = "val"; val.textContent = `${p.pickups_per_hour} pickups/hr`;
+        row.append(rank, name, val);
+        rows.append(row);
+      });
+    }
+
+    loadLive();
+    setInterval(loadLive, 15000);
+    loadBoard();
+
+    /* ================= "Try getting busted" demo ================= */
+    const ROASTS = [
+      "Your textbook misses you. Buzz noticed.",
+      "That notification was not an emergency.",
+      "Bold move, during finals.",
+      "Everyone at the table saw that.",
+    ];
+    const demoBee = $("demoBee");
+    Buzz.bee(demoBee, "worried");
+    let stopShakes = null, holdTimer = null, roastI = 0;
+    const isTouch = matchMedia("(pointer: coarse)").matches;
+
+    const meter = Buzz.meter({
+      seconds: 10,
+      onProgress: (f, ms) => {
+        $("demoFill").style.width = (f * 100).toFixed(1) + "%";
+        $("demoSecs").textContent = `${(ms / 1000).toFixed(1)} / 10 seconds`;
+      },
+      onDone: () => {
+        stopHold();
+        Buzz.home(demoBee);
+        Buzz.setMood(demoBee, "happy");
+        demoBee.classList.remove("bz-panic");
+        $("demoCard").classList.remove("ringing");
+        $("demoTitle").textContent = "Silenced";
+        $("demoHint").textContent = "Buzz flew off. Put your phone back down.";
+        $("holdBtn").textContent = "Try again";
+      },
+    });
+
+    function shake() {
+      if ($("demo").hidden || $("demoTitle").textContent !== "Busted") return;
+      meter.jolt();
+      Buzz.bounce(demoBee, $("arena"));
+      if (navigator.vibrate) navigator.vibrate(20);
+    }
+
+    async function openDemo() {
+      // iPhone asks for motion permission from this tap
+      if (isTouch && typeof DeviceMotionEvent?.requestPermission === "function") {
+        try { await DeviceMotionEvent.requestPermission(); } catch (_) {}
+      }
+      $("demo").hidden = false;
+      resetDemo();
+      stopShakes = Buzz.listenForShakes(shake);
+      $("holdBtn").focus({ preventScroll: true });
+    }
+
+    function resetDemo() {
+      meter.reset();
+      meter.start();
+      Buzz.home(demoBee);
+      Buzz.setMood(demoBee, "worried");
+      demoBee.classList.add("bz-panic");
+      $("demoCard").classList.add("ringing");
+      $("demoTitle").textContent = "Busted";
+      $("demoRoast").textContent = ROASTS[roastI++ % ROASTS.length];
+      $("demoHint").textContent = isTouch ? "Shake your phone to send Buzz away" : "Keep shaking to send Buzz away";
+      $("holdBtn").textContent = isTouch ? "No motion sensor? Hold here" : "Hold to shake (or hold space)";
+    }
+
+    function closeDemo() {
+      $("demo").hidden = true;
+      meter.stop();
+      stopHold();
+      if (stopShakes) stopShakes();
+      $("tryBtn").focus({ preventScroll: true });
+    }
+
+    // Desktop: holding the button (or space) shakes about 7 times a second
+    function startHold() {
+      if ($("demoTitle").textContent !== "Busted") { resetDemo(); return; }
+      if (holdTimer) return;
+      shake();
+      holdTimer = setInterval(shake, 140);
+    }
+    function stopHold() { clearInterval(holdTimer); holdTimer = null; }
+
+    $("tryBtn").addEventListener("click", openDemo);
+    $("demoClose").addEventListener("click", closeDemo);
+    $("demo").addEventListener("click", e => { if (e.target === $("demo")) closeDemo(); });
+    $("holdBtn").addEventListener("pointerdown", e => { e.preventDefault(); startHold(); });
+    ["pointerup", "pointerleave", "pointercancel"].forEach(t => $("holdBtn").addEventListener(t, stopHold));
+    document.addEventListener("keydown", e => {
+      if ($("demo").hidden) return;
+      if (e.key === "Escape") closeDemo();
+      if (e.code === "Space") { e.preventDefault(); if (!e.repeat) startHold(); }
+    });
+    document.addEventListener("keyup", e => { if (e.code === "Space") stopHold(); });
   </script>
 </body>
 </html>
