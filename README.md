@@ -1,23 +1,80 @@
-# Buzzkill-hackathon-PSU
-This project is for the Fall26 hackathon this project is a study app that calls you names if you pick up your phone and to turn it off you have to shake it!
+# Buzzkill 🐝
 
+**A study brick that roasts you out loud when you pick up your phone.** Built at the Fall 2026 PSU hackathon.
 
-## Website
+Your study group puts their phones face down around the brick. The moment someone lifts theirs, the brick's speaker
+calls them out by name with an AI-written roast, and it doesn't stop until they **shake their phone** for 10 seconds
+(longer every time they slip). Everyone sees who folded first.
 
-Live at **https://www.buzzkill.study** (also https://buzzkill-psu.vercel.app).
+- **Live site:** https://www.buzzkill.study (also https://buzzkill-psu.vercel.app)
+- **Join the brick's game:** https://buzzkill-psu.vercel.app/brick (what the NFC sticker and QR code on the brick open)
 
-## Hosting the website on Vercel
+## The problem
 
-1. Go to vercel.com → **Add New → Project** → import `jzps333/Buzzkill-PSU`.
-2. Leave every setting as it is and click **Deploy**. `vercel.json` already tells Vercel the website is in `frontend/`.
-3. Every push to `main` updates the site automatically.
+Group study sessions die by a thousand notifications. Screen-time apps are private and easy to ignore.
+Buzzkill makes slipping **public, funny and a little painful**: peer pressure, out loud, in real time.
 
-## AI roasts (Gemini + ElevenLabs)
+## How a game works
 
-`supabase/functions/roast` is a Supabase Edge Function. When someone gets busted, the host page (or the Pi) asks it for a roast:
-it reads the player's real stats, Gemini writes a savage (but clean) line, ElevenLabs turns it into an mp3.
-Only the game's host or the Pi can call it, so nobody can burn the API credits.
+1. **Tap the brick.** It says the PIN out loud: *"New game. Your PIN is 4, F, 2, A, 9, C."*
+2. **Join from your phone:** tap the NFC sticker, scan the QR code, or type the PIN at buzzkill.study. Log in with Google, email, or as a guest. You need 4+ players.
+3. **Vote on a pomodoro** (sprint / classic / deep), then **tap the brick** to start. Phones go face down.
+4. **Pick up your phone** (or leave the page) and you're busted: the brick roasts you on loop, by name, using your real stats.
+5. **Shake your phone** to shut it up. 10 s the first time, 30 s the second, 1 min the third...
+6. **Tap the brick** any time for the time left and the scoreboard. **Hold it** for 3 seconds to end the game.
+7. **Results:** titles (Iron Will, Doomscroller, First to Fold), the leaderboard, your rivals and your nemesis.
 
-Setup (once): Supabase → Edge Functions → deploy `roast` with **Verify JWT off**, then Edge Functions → Secrets:
-`GEMINI_API_KEY` and `ELEVENLABS_API_KEY` (optional: `ELEVENLABS_VOICE_ID`, `GEMINI_MODEL`).
-Without keys it still works and falls back to the built-in roasts.
+**Teams mode** (double tap): even teams (2v2, 3v3...), one slip busts your whole team.
+**Emergency pass:** once per game, cancel a pickup and get 10 free minutes for a real emergency.
+Breaks in the pomodoro don't count.
+
+## Architecture
+
+```
+ Phones (website)                      Supabase                              The brick (Raspberry Pi)
+ ───────────────                       ────────                              ────────────────────────
+ motion sensor: lifted? ──pickup──►   events table                          brick.py:  touch pad, PIN, scoreboard
+ left the page?  ───────left_page─►     │ trigger = the referee             speaker.py: roasts on the JBL
+ shaking? ──────────────shake────►     ▼                                         ▲
+                                      results: pickups, alarm_on, ──────────────┘ polls every 0.5 s
+ live updates ◄──── Realtime ───────  is_shaking, shake time
+                                      roast Edge Function: Gemini writes, ElevenLabs speaks ──► mp3 to the Pi
+```
+
+- **The database is the referee.** Phones only send events. A Postgres trigger counts pickups, sets the alarm,
+  adds up shaking time and decides the winner, so nobody can cheat from their phone.
+- **The phone is the sensor.** The website reads the accelerometer: face down → lifted = pickup, hard jolts = shaking.
+  Leaving the page counts too. (A website can't see which app you opened, so we catch the pickup itself.)
+- **The brick is the voice.** The Pi follows its game in Supabase and plays the roasts on a Bluetooth speaker.
+  If the Pi is down, the host's laptop takes over from the `/host` page.
+
+## Tech
+
+| Part | Built with |
+|---|---|
+| Website | plain HTML/JS on Vercel, Supabase JS, device motion + wake lock APIs |
+| Backend | Supabase: Postgres, row-level security, triggers, Realtime, Auth (Google, email, guests) |
+| AI roasts | Supabase Edge Function: Gemini (writes from real stats, new style every time) + ElevenLabs (voice) |
+| Hardware | Raspberry Pi 4B, Grove Base Hat, touch sensor, JBL Go 3 over Bluetooth, NFC sticker, optional 16x2 LCD |
+| Security | RLS on every table, only the host or the Pi can run a game or spend AI credits, phone-only joining, escaped usernames, strict CSP |
+
+**SOL stakes:** profiles can hold a Solana wallet, and `finish_game` already calculates payouts for staked games
+(0.02 SOL per pickup goes to the players who stayed clean). On-chain staking from the lobby is not live yet.
+
+## Repo map
+
+| Folder | What's inside |
+|---|---|
+| [`frontend/`](frontend) | the website: landing + PIN, login, game (`join`), `host`, results, leaderboard, dashboard, friends, `brick` |
+| [`backend/`](backend) | Supabase SQL: tables, security, game rules, teams, pomodoro, lobby. [README](backend/README.md) |
+| [`supabase/functions/roast`](supabase/functions/roast) | the AI roast Edge Function (Gemini + ElevenLabs) |
+| [`hardware/`](hardware) | the brick's Raspberry Pi code: touch pad, speaker, LCD, NFC. [README](hardware/README.md) |
+
+## Run it yourself
+
+- **Website:** import the repo in Vercel and deploy (`vercel.json` points it at `frontend/`). Every push to `main` redeploys.
+- **Backend:** see [`backend/README.md`](backend/README.md): run the SQL files in order, turn on guest sign-ins.
+- **AI roasts:** Supabase → Edge Functions → deploy `roast` with **Verify JWT off**, then add the secrets
+  `GEMINI_API_KEY` and `ELEVENLABS_API_KEY` (optional: `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`, `GEMINI_MODEL`).
+  Without keys it falls back to built-in roasts.
+- **The brick:** see [`hardware/README.md`](hardware/README.md): `bash setup.sh`, pair the speaker, add the key, done.
