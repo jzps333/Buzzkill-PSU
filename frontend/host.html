@@ -4,50 +4,194 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Buzzkill · Host</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    body { font-family: system-ui, sans-serif; background: #111; color: #eee; max-width: 520px; margin: 0 auto; padding: 32px 16px; }
-    h1 { margin-bottom: 4px; }
-    .muted { color: #888; }
-    #code { font-size: 48px; font-weight: 800; letter-spacing: 6px; margin: 16px 0 4px; }
-    #link { word-break: break-all; color: #f5c542; }
-    button { width: 100%; padding: 14px; margin-top: 12px; border: 0; border-radius: 10px; background: #f5c542; color: #111; font-size: 17px; font-weight: 700; }
-    button.ghost { background: #222; color: #eee; }
-    button.danger { background: #ff5c5c; color: #111; }
-    ul { list-style: none; padding: 0; margin: 20px 0 0; }
-    li { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #2a2a2a; }
-    label { display: flex; gap: 8px; align-items: center; margin-top: 16px; color: #aaa; }
-    #msg { color: #ff7a7a; margin-top: 12px; }
+    :root {
+      --cream: #FFFAEB; --honey: #F5D35A; --sand: #F4EEDC; --peach: #F7E4BF;
+      --ink: #1F1B16; --ink-2: #5E574B; --line: #EAE2CC; --white: #FFFFFF;
+      --green: #2F8A55; --red: #C2343B; --amber: #B7791F;
+      --font: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100svh; background: var(--cream); color: var(--ink); font: 500 16px/1.55 var(--font); -webkit-font-smoothing: antialiased; }
+    a { color: inherit; }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+
+    .wrap { width: min(1040px, 100% - 32px); margin: 0 auto; }
+
+    /* Nav (same as the landing page) */
+    .nav { display: flex; align-items: center; justify-content: space-between; height: 72px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; text-decoration: none; }
+    .brand-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--honey); display: grid; place-items: center; }
+    .nav-links { display: flex; align-items: center; gap: 22px; font-size: 14px; font-weight: 700; }
+    .nav-links a:not(.pill) { text-decoration: none; }
+    .nav-links a:not(.pill):hover { text-decoration: underline; }
+    .pill { display: inline-flex; align-items: center; height: 38px; padding: 0 16px; border-radius: 999px; background: var(--ink); color: var(--white); font-size: 14px; font-weight: 700; text-decoration: none; }
+    .pill:hover { background: #3A332A; }
+
+    main { width: min(600px, 100%); margin: 0 auto; padding: 8px 0 64px; }
+
+    .head { display: flex; align-items: center; gap: 16px; padding: 22px 24px; border-radius: 24px; background: var(--honey); }
+    .head .bee { flex: none; width: 74px; }
+    .head h1 { margin: 0; font-size: clamp(26px, 5vw, 34px); line-height: 1.1; font-weight: 800; letter-spacing: -.8px; }
+    .head p { margin: 2px 0 0; font-size: 14px; color: #3E3420; }
+
+    .card { margin-top: 14px; padding: 22px; border: 1px solid var(--line); border-radius: 22px; background: var(--white); }
+    .card h2 { margin: 0 0 2px; font-size: 20px; font-weight: 800; letter-spacing: -.3px; }
+    .sub { margin: 0; font-size: 14px; color: var(--ink-2); }
+
+    /* Buttons */
+    .btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; height: 52px; margin-top: 12px;
+      border: 0; border-radius: 999px;
+      background: var(--ink); color: var(--white);
+      font: 800 15px var(--font); cursor: pointer;
+    }
+    .btn:hover { background: #3A332A; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn:disabled:hover { background: var(--ink); }
+    .btn.honey { background: var(--honey); color: var(--ink); }
+    .btn.honey:hover { background: #E9BF2E; }
+    .btn.ghost { background: var(--sand); color: var(--ink); }
+    .btn.ghost:hover { background: #EBE3CC; }
+    .btn.danger { background: var(--red); }
+    .btn.danger:hover { background: #A32A30; }
+
+    /* The PIN card */
+    .pin-card { margin-top: 14px; padding: 26px 24px; border-radius: 24px; background: var(--ink); color: var(--white); text-align: center; }
+    .status { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; background: #3A352D; font-size: 13px; font-weight: 800; }
+    .status i { width: 8px; height: 8px; border-radius: 50%; background: var(--honey); }
+    .status.live i { background: #FF5A5F; animation: blip 1.2s infinite; }
+    .status.ended i, .status.cancelled i { background: #9C958A; }
+    @keyframes blip { 50% { opacity: .25; } }
+    .pin-label { margin: 16px 0 0; font-size: 12px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #BDB4A0; }
+    #code { margin: 2px 0 8px; font-size: clamp(44px, 12vw, 64px); line-height: 1; font-weight: 800; letter-spacing: 6px; color: var(--honey); }
+    .open-at { margin: 0; font-size: 14px; color: #D8D0BE; }
+    #link { font-weight: 800; color: var(--white); word-break: break-all; }
+
+    /* Players */
+    .count-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px; font-size: 14px; font-weight: 700; color: var(--ink-2); }
+    .bar { height: 8px; margin: 8px 0 14px; border-radius: 99px; background: var(--sand); overflow: hidden; }
+    .bar span { display: block; height: 100%; width: 0; border-radius: 99px; background: var(--honey); transition: width .3s; }
+    .bar.full span { background: var(--green); }
+    ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: #FBF8EF; font-weight: 700; }
+    li .av { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--honey); font-size: 13px; font-weight: 800; }
+    li .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chip { flex: none; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; background: var(--sand); color: var(--ink-2); white-space: nowrap; }
+    .chip.clean { background: #E3F2E8; color: var(--green); }
+    .chip.busted { background: #FBE0E1; color: var(--red); }
+    .chip.shaking { background: #FCEFD2; color: var(--amber); }
+    li.empty { justify-content: center; background: transparent; border: 2px dashed var(--line); color: var(--ink-2); font-weight: 600; }
+
+    /* Roast voice switch */
+    .switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 16px 18px; border-radius: 18px; background: var(--sand); cursor: pointer; }
+    .switch b { display: block; font-size: 15px; }
+    .switch span { font-size: 13px; color: var(--ink-2); }
+    .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .track { flex: none; position: relative; width: 48px; height: 28px; border-radius: 999px; background: #D9D1BC; transition: background .2s; }
+    .track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--white); transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+    .switch input:checked + .track { background: var(--ink); }
+    .switch input:checked + .track::after { transform: translateX(20px); }
+    .switch input:focus-visible + .track { outline: 3px solid var(--ink); outline-offset: 3px; }
+
+    #msg { min-height: 1.4em; margin: 14px 0 0; text-align: center; font-size: 14px; font-weight: 700; color: var(--red); }
+    .msg-card { display: grid; justify-items: center; gap: 14px; margin-top: 14px; padding: 20px; border-radius: 18px; background: var(--peach); font-weight: 700; text-align: center; }
+
+    @media (max-width: 560px) {
+      .nav-links a:not(.pill) { display: none; }
+      .head { padding: 18px; }
+      .head .bee { width: 58px; }
+      .card { padding: 18px 16px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .status.live i { animation: none; } }
   </style>
 </head>
 <body>
-  <p><a href="/dashboard" style="color:#888;text-decoration:none">← Dashboard</a></p>
-  <h1>Host a game</h1>
-  <p class="muted">Backup controls in case the brick isn't working.</p>
-
-  <div id="setup">
-    <button id="newGame">New game</button>
+  <div class="wrap">
+    <nav class="nav">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3c-3.6 0-6 2.7-6 6.3V14l-2 3h16l-2-3V9.3C18 5.7 15.6 3 12 3z" fill="#1F1B16"/><circle cx="12" cy="19.5" r="2.2" fill="#1F1B16"/></svg>
+        </span>
+        Buzzkill
+      </a>
+      <div class="nav-links">
+        <a href="/#how">How it works</a>
+        <a href="/leaderboard">Leaderboard</a>
+        <a class="pill" href="/dashboard">My dashboard</a>
+      </div>
+    </nav>
   </div>
 
-  <div id="game" hidden>
-    <div id="status" class="muted"></div>
-    <div id="code"></div>
-    <div class="muted">Players open: <span id="link"></span></div>
+  <main>
+    <section class="head">
+      <div class="bee" id="bee"></div>
+      <div>
+        <h1>Host a game</h1>
+        <p>Backup controls in case the brick isn't working. Run the game from this screen.</p>
+      </div>
+    </section>
 
-    <ul id="players"></ul>
+    <!-- Before a game exists -->
+    <section class="card" id="setup">
+      <h2>Start a new game</h2>
+      <p class="sub">You'll get a game PIN. Friends type it on their phones at buzzkill.study. You need 4 or more players to start.</p>
+      <button class="btn" id="newGame">New game</button>
+    </section>
 
-    <button id="startBtn">Start game</button>
-    <button id="endBtn" class="danger" hidden>End game</button>
-    <button id="resultsBtn" class="ghost" hidden>See results</button>
-    <button id="closeBtn" class="ghost" hidden>Close game</button>
-    <label><input type="checkbox" id="voice"> Play roasts out loud from this device</label>
-  </div>
+    <!-- Guests can't host -->
+    <div class="msg-card" id="guestCard" hidden>
+      <span>Guests can't host. Make an account to start your own games.</span>
+      <a class="pill" href="/login?tab=signup&next=/host">Make an account</a>
+    </div>
 
-  <p id="msg"></p>
+    <!-- A game is open -->
+    <div id="game" hidden>
+      <section class="pin-card">
+        <span class="status" id="statusPill"><i></i><span id="status"></span></span>
+        <p class="pin-label">Game PIN</p>
+        <div id="code"></div>
+        <p class="open-at">Players open <span id="link"></span></p>
+      </section>
+
+      <section class="card">
+        <h2>Players</h2>
+        <div class="count-row"><span id="countText">0 / 4 players</span><span id="countHint">4 needed to start</span></div>
+        <div class="bar" id="bar"><span id="barFill"></span></div>
+        <ul id="players"></ul>
+
+        <button class="btn" id="startBtn">Start game</button>
+        <button class="btn danger" id="endBtn" hidden>End game</button>
+        <button class="btn honey" id="resultsBtn" hidden>See results</button>
+        <button class="btn ghost" id="closeBtn" hidden>Close game</button>
+      </section>
+
+      <label class="switch">
+        <div>
+          <b>Read roasts out loud</b>
+          <span>Plays from this device whenever someone gets busted.</span>
+        </div>
+        <input type="checkbox" id="voice">
+        <span class="track" aria-hidden="true"></span>
+      </label>
+    </div>
+
+    <p id="msg" role="status"></p>
+  </main>
 
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
+  <script src="buzz.js"></script>
   <script>
     const $ = id => document.getElementById(id);
+    Buzz.bee($("bee"));
+    $("bee").classList.add("bz-float");
+
     const ROASTS = [
       n => `${n} picked up their phone. Your future self is disappointed.`,
       n => `Attention everyone. ${n} could not last. Shake it off, ${n}.`,
@@ -63,7 +207,7 @@
       const { data: { session } } = await sb.auth.getSession();
       if (!session) { location.href = "login?next=/host"; return; }
       const { data: me } = await sb.from("profiles").select("is_guest").eq("id", session.user.id).single();
-      if (me?.is_guest) { $("msg").textContent = "Guests can't host. Make an account first."; $("setup").hidden = true; return; }
+      if (me?.is_guest) { $("setup").hidden = true; $("guestCard").hidden = false; return; }
 
       // Pick up where you left off if you already have a game open
       const { data: open } = await sb.from("games").select("code, status")
@@ -74,7 +218,9 @@
 
     // ---------- 2. New game ----------
     $("newGame").onclick = async () => {
+      $("newGame").disabled = true;
       const { data, error } = await sb.rpc("create_game");
+      $("newGame").disabled = false;
       if (error) { $("msg").textContent = error.message; return; }
       openGame(data, "waiting");
     };
@@ -98,11 +244,13 @@
 
     function setStatus(s) {
       status = s;
-      $("status").textContent = { waiting: "Waiting for players", live: "🔴 Game is live", ended: "Game over", cancelled: "Game closed" }[s];
+      $("status").textContent = { waiting: "Waiting for players", live: "Game is live", ended: "Game over", cancelled: "Game closed" }[s];
+      $("statusPill").className = "status " + s;
       $("startBtn").hidden = s !== "waiting";
       $("closeBtn").hidden = s !== "waiting";
       $("endBtn").hidden = s !== "live";
       $("resultsBtn").hidden = s !== "ended";
+      updateCount();
     }
 
     // While waiting: every 8 seconds, drop players whose phone went quiet (closed browser, dead phone)
@@ -121,11 +269,17 @@
       players = data || [];
       for (const p of players) if (p.is_shaking) lastShakeSeen[p.user_id] = Date.now();
       renderPlayers();
+      updateCount();
+    }
 
-      // Start only unlocks at 4+ players
-      const need = 4 - players.length;
+    // Start only unlocks at 4+ players
+    function updateCount() {
+      const n = players.length, need = 4 - n;
+      $("countText").textContent = `${n} player${n === 1 ? "" : "s"}`;
+      $("countHint").textContent = status !== "waiting" ? "" : need > 0 ? `${need} more to start` : "Ready to start";
+      $("barFill").style.width = Math.min(100, n / 4 * 100) + "%";
+      $("bar").classList.toggle("full", need <= 0);
       $("startBtn").disabled = need > 0;
-      $("startBtn").style.opacity = need > 0 ? 0.4 : 1;
       $("startBtn").textContent = need > 0 ? `Need ${need} more player${need === 1 ? "" : "s"} to start` : "Start game";
     }
 
@@ -138,19 +292,37 @@
 
     function renderPlayers() {
       const ul = $("players");
+      if (!players.length) {
+        const li = document.createElement("li");
+        li.className = "empty";
+        li.textContent = "Nobody yet. Share the PIN.";
+        ul.replaceChildren(li);
+        return;
+      }
       ul.replaceChildren(...players.map(p => {
         const li = document.createElement("li");
-        const name = document.createElement("span");
-        const info = document.createElement("span");
+        const name = p.profiles?.username ?? "player";
+        const av = document.createElement("span");
+        av.className = "av";
+        av.textContent = name.charAt(0).toUpperCase();
+        const who = document.createElement("span");
+        who.className = "who";
+        who.textContent = name;
+        const chip = document.createElement("span");
         const left = Math.max(0, Math.ceil(p.shake_secs_needed - p.shake_secs_done));
-        name.textContent = p.profiles?.username ?? "player";
-        info.textContent = !p.alarm_on ? `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`
-          : soundOn(p) ? `🚨 BUSTED · ${left}s of shaking left`
-          : `🫨 shaking · ${left}s left`;
-        li.append(name, info);
+        if (!p.alarm_on) {
+          chip.className = "chip" + (p.pickups === 0 ? " clean" : "");
+          chip.textContent = p.pickups === 0 ? (status === "waiting" ? "Ready" : "Clean") : `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`;
+        } else if (soundOn(p)) {
+          chip.className = "chip busted";
+          chip.textContent = `Busted, ${left}s of shaking left`;
+        } else {
+          chip.className = "chip shaking";
+          chip.textContent = `Shaking, ${left}s left`;
+        }
+        li.append(av, who, chip);
         return li;
       }));
-      if (!players.length) ul.innerHTML = '<li class="muted">Nobody yet</li>';
     }
 
     // ---------- Roast loop: keeps talking while anyone's sound is on, silent while they shake ----------

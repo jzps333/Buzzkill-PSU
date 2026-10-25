@@ -28,6 +28,8 @@
 
     .page { width: min(420px, 100%); margin: 0 auto; padding: 20px 16px 32px; }
     .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; font-weight: 800; }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 800; text-decoration: none; color: inherit; }
+    .brand-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--honey); display: grid; place-items: center; }
     .room { padding: 6px 12px; border-radius: 999px; background: var(--sand); font-size: 13px; letter-spacing: 1px; }
 
     .card { padding: 28px 20px 24px; border-radius: 26px; background: var(--honey); }
@@ -76,7 +78,15 @@
 </head>
 <body>
   <main class="page">
-    <div class="top"><span>Buzzkill</span><span class="room" id="roomTag" hidden></span></div>
+    <div class="top">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3c-3.6 0-6 2.7-6 6.3V14l-2 3h16l-2-3V9.3C18 5.7 15.6 3 12 3z" fill="#1F1B16"/><circle cx="12" cy="19.5" r="2.2" fill="#1F1B16"/></svg>
+        </span>
+        Buzzkill
+      </a>
+      <span class="room" id="roomTag" hidden></span>
+    </div>
     <div class="card">
       <div class="bee" id="bee"></div>
       <h1 id="status">Joining…</h1>
