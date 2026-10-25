@@ -19,6 +19,7 @@
   <p><a href="/dashboard" style="color:#888;text-decoration:none">← Dashboard</a></p>
   <h1>Results</h1>
   <p class="muted" id="sub">Loading…</p>
+  <div class="card" id="teamCard" hidden></div>
   <div id="list"></div>
   <p><a href="leaderboard">All-time leaderboard →</a></p>
 
@@ -35,12 +36,26 @@
       const { data, error } = await sb.from("game_awards").select("*").eq("game", room).order("pickups");
       const sub = document.getElementById("sub");
       if (error || !data?.length) { sub.textContent = "No results for this game yet."; return; }
-      sub.textContent = `Game ${room} · ${data.length} players`;
+      const { data: g } = await sb.from("games").select("mode, pomo_choice").eq("code", room).maybeSingle();
+      const POMO = { sprint: "Sprint pomodoro", classic: "Classic pomodoro", deep: "Deep pomodoro", none: "No breaks" };
+      sub.textContent = `Game ${room} · ${data.length} players` + (g?.pomo_choice ? ` · ${POMO[g.pomo_choice] ?? ""}` : "");
+
+      // Teams: fewest total pickups wins
+      if (g?.mode === "teams") {
+        const tot = { 1: 0, 2: 0 };
+        data.forEach(p => { if (p.team) tot[p.team] += p.pickups; });
+        const name = { 1: "🍯 Team Honey", 2: "🐝 Team Stingers" };
+        const card = document.getElementById("teamCard");
+        const headline = tot[1] === tot[2] ? "🤝 It's a tie!" : `${name[tot[1] < tot[2] ? 1 : 2]} wins!`;
+        card.replaceChildren(el("div", "name", headline), el("div", "muted", `Honey ${tot[1]} pickups · Stingers ${tot[2]} pickups`));
+        card.hidden = false;
+      }
 
       document.getElementById("list").replaceChildren(...data.map((p, i) => {
         const card = el("div", "card");
         const row = el("div", "row");
-        row.append(el("span", "name", `${i + 1}. ${p.username}`), el("span", "muted", `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`));
+        const team = g?.mode === "teams" && p.team ? (p.team === 1 ? "🍯 " : "🐝 ") : "";
+        row.append(el("span", "name", `${i + 1}. ${team}${p.username}`), el("span", "muted", `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`));
         card.append(row);
 
         const titles = [

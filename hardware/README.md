@@ -11,7 +11,7 @@ The Pi only needs to do 3 things, using the secret key in `.env`:
 
 | Touch | Call | What happens |
 |---|---|---|
-| Tap (no game) | `create_game()` → returns a code like `4F2A9C` | Write `https://www.buzzkill.study/join?room=CODE` to the NFC tag |
+| Tap (no game) | `create_game()` (solo) or `create_game({"p_mode": "teams"})` → returns a code like `4F2A9C` | Write `https://www.buzzkill.study/join?room=CODE` to the NFC tag |
 | Tap (waiting) | `start_game(p_code)` | Game goes live. Fails with an error if fewer than 4 players joined, so play a "need more players" sound |
 | Hold 3 s | `finish_game(p_code)` | Game ends, SOL payouts are calculated |
 | (optional) | `cancel_game(p_code)` | Close a game that hasn't started yet |
@@ -34,6 +34,12 @@ sb.rpc("finish_game", {"p_code": code}).execute()
 
 Safety rule: while someone is shaking, their row updates about twice a second. If you get no update
 for 2 seconds while `is_shaking` is still true (their phone died or lost signal), treat it as stopped and play the sound.
+
+In **teams** mode, one pickup turns `alarm_on` on for every player on that team, so several rows can be busted at once.
+Play the sound while ANY player is busted and not shaking. `alarm_cause` says whose pickup it was (good for the roast: "Alex slipped!").
+
+**Optional, nice for the demo:** announce breaks. The game row has `start_time`, `pomo_work` and `pomo_break` (minutes);
+call `on_break(p_code)` to check, and say "Break time!" / "Break's over, phones down!" when it changes.
 
 **3. Players joining:** phones handle it, and new rows show up in `results`. While the game is waiting,
 call `prune_lobby(p_code)` every ~8 seconds so players who closed their browser get removed

@@ -14,7 +14,14 @@
     button.ghost { background: #222; color: #eee; }
     button.danger { background: #ff5c5c; color: #111; }
     ul { list-style: none; padding: 0; margin: 20px 0 0; }
-    li { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #2a2a2a; }
+    li { display: flex; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid #2a2a2a; }
+    .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .modes button { margin-top: 0; }
+    .box { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: #1b1b1b; }
+    .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+    .teams div { padding: 12px; border-radius: 10px; background: #1b1b1b; text-align: center; }
+    .teams b { display: block; font-size: 28px; }
+    .lead { outline: 2px solid #f5c542; }
     label { display: flex; gap: 8px; align-items: center; margin-top: 16px; color: #aaa; }
     #msg { color: #ff7a7a; margin-top: 12px; }
   </style>
@@ -25,7 +32,11 @@
   <p class="muted">Backup controls in case the brick isn't working.</p>
 
   <div id="setup">
-    <button id="newGame">New game</button>
+    <p class="muted">Pick a mode:</p>
+    <div class="modes">
+      <button id="newSolo">Solo<br><small>everyone for themselves</small></button>
+      <button id="newTeams" class="ghost">Teams<br><small>Honey vs Stingers</small></button>
+    </div>
   </div>
 
   <div id="game" hidden>
@@ -33,6 +44,12 @@
     <div id="code"></div>
     <div class="muted">Players open: <span id="link"></span></div>
 
+    <div class="box" id="modeBox"></div>
+    <div class="box" id="phaseBox" hidden></div>
+    <div class="teams" id="teamsBox" hidden>
+      <div id="team1"><span>🍯 Honey</span><b>0</b><small>pickups</small></div>
+      <div id="team2"><span>🐝 Stingers</span><b>0</b><small>pickups</small></div>
+    </div>
     <ul id="players"></ul>
 
     <button id="startBtn">Start game</button>
@@ -55,7 +72,8 @@
       n => `Wow ${n}. That notification was not important.`,
     ];
 
-    let code = null, status = null, players = [];
+    let code = null, status = null, players = [], game = {};
+    const POMO = { sprint: "Sprint (15 min focus / 3 break)", classic: "Classic (25 / 5)", deep: "Deep (50 / 10)", none: "No breaks" };
     const lastShakeSeen = {};         // user_id -> when we last heard they were shaking (this laptop's clock)
 
     // ---------- 1. Must be logged in, not as a guest ----------
@@ -66,21 +84,32 @@
       if (me?.is_guest) { $("msg").textContent = "Guests can't host. Make an account first."; $("setup").hidden = true; return; }
 
       // Pick up where you left off if you already have a game open
-      const { data: open } = await sb.from("games").select("code, status")
+      const { data: open } = await sb.from("games").select("code, status, mode")
         .eq("host_id", session.user.id).in("status", ["waiting", "live"])
         .order("code").limit(1).maybeSingle();
       if (open) openGame(open.code, open.status);
     }
 
     // ---------- 2. New game ----------
-    $("newGame").onclick = async () => {
-      const { data, error } = await sb.rpc("create_game");
+    async function newGame(mode) {
+      const { data, error } = await sb.rpc("create_game", { p_mode: mode });
       if (error) { $("msg").textContent = error.message; return; }
       openGame(data, "waiting");
-    };
+    }
+    $("newSolo").onclick = () => newGame("solo");
+    $("newTeams").onclick = () => newGame("teams");
+
+    async function loadGame() {
+      const { data } = await sb.from("games").select("*").eq("code", code).maybeSingle();
+      if (data) game = data;
+      $("modeBox").textContent = game.mode === "teams"
+        ? "👥 Teams: players are split into Honey and Stingers when you start. One pickup busts the whole team."
+        : "🙋 Solo: everyone for themselves.";
+    }
 
     function openGame(c, s) {
       code = c;
+      loadGame();
       $("setup").hidden = true;
       $("game").hidden = false;
       $("code").textContent = code;
@@ -92,7 +121,7 @@
       sb.channel("host-" + code)
         .on("postgres_changes", { event: "*", schema: "public", table: "results", filter: `game=eq.${code}` }, loadPlayers)
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "games", filter: `code=eq.${code}` },
-            p => setStatus(p.new.status))
+            p => { game = p.new; setStatus(p.new.status); })
         .subscribe();
     }
 
@@ -103,7 +132,23 @@
       $("closeBtn").hidden = s !== "waiting";
       $("endBtn").hidden = s !== "live";
       $("resultsBtn").hidden = s !== "ended";
+      $("teamsBox").hidden = !(s === "live" && game.mode === "teams");
+      $("phaseBox").hidden = s !== "live";
+      if (s === "live" && !game.start_time) loadGame();
     }
+
+    // ---------- Focus / break timer (same math as the database) ----------
+    const mmss = x => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
+    setInterval(() => {
+      if (status !== "live" || !game.start_time) return;
+      const box = $("phaseBox");
+      if (!(game.pomo_work > 0)) { box.textContent = "🍅 No breaks this game"; return; }
+      const t = (Date.now() - new Date(game.start_time)) / 1000;
+      const w = game.pomo_work * 60, c = (game.pomo_work + game.pomo_break) * 60, m = t % c;
+      box.textContent = m >= w ? `☕ Break · ${mmss(c - m)} left. Phones are OK.`
+        : (t >= c && m < 15) ? `⏰ Break's over. Phones down in ${Math.ceil(15 - m)}s`
+        : `🍅 Focus · ${mmss(w - m)} until break · ${POMO[game.pomo_choice] ?? ""}`;
+    }, 1000);
 
     // While waiting: every 8 seconds, drop players whose phone went quiet (closed browser, dead phone)
     setInterval(async () => {
@@ -116,11 +161,30 @@
     // ---------- 3. Player list (names are set with textContent, so they can't run code) ----------
     async function loadPlayers() {
       const { data } = await sb.from("results")
-        .select("user_id, pickups, alarm_on, is_shaking, shake_secs_needed, shake_secs_done, profiles(username)")
+        .select("user_id, pickups, alarm_on, is_shaking, shake_secs_needed, shake_secs_done, team, pomo_vote, pass_until, profiles(username)")
         .eq("game", code);
       players = data || [];
       for (const p of players) if (p.is_shaking) lastShakeSeen[p.user_id] = Date.now();
       renderPlayers();
+
+      // Lobby: pomodoro votes so far
+      if (status === "waiting") {
+        const n = {};
+        players.forEach(p => { if (p.pomo_vote) n[p.pomo_vote] = (n[p.pomo_vote] || 0) + 1; });
+        const votes = Object.entries(n).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${POMO[k] ?? k}: ${v}`);
+        $("phaseBox").hidden = false;
+        $("phaseBox").textContent = "🍅 Pomodoro votes · " + (votes.length ? votes.join(" · ") : "none yet (Classic if nobody votes)");
+      }
+
+      // Teams: total pickups per team, leader highlighted
+      if (game.mode === "teams") {
+        const tot = { 1: 0, 2: 0 };
+        players.forEach(p => { if (p.team) tot[p.team] += p.pickups; });
+        $("team1").querySelector("b").textContent = tot[1];
+        $("team2").querySelector("b").textContent = tot[2];
+        $("team1").classList.toggle("lead", tot[1] < tot[2]);
+        $("team2").classList.toggle("lead", tot[2] < tot[1]);
+      }
 
       // Start only unlocks at 4+ players
       const need = 4 - players.length;
@@ -143,8 +207,12 @@
         const name = document.createElement("span");
         const info = document.createElement("span");
         const left = Math.max(0, Math.ceil(p.shake_secs_needed - p.shake_secs_done));
-        name.textContent = p.profiles?.username ?? "player";
-        info.textContent = !p.alarm_on ? `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`
+        const team = game.mode === "teams" && p.team ? (p.team === 1 ? "🍯 " : "🐝 ") : "";
+        name.textContent = team + (p.profiles?.username ?? "player");
+        const onPass = p.pass_until && new Date(p.pass_until) > Date.now();
+        info.textContent = status === "waiting" ? (p.pomo_vote ? "voted" : "")
+          : onPass ? `🆘 emergency pass · ${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`
+          : !p.alarm_on ? `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`
           : soundOn(p) ? `🚨 BUSTED · ${left}s of shaking left`
           : `🫨 shaking · ${left}s left`;
         li.append(name, info);

@@ -71,30 +71,55 @@
     .b-meter span { display: block; height: 100%; width: 0; border-radius: 99px; background: var(--honey); transition: width .1s linear; }
     .b-secs { margin: 10px 0 0; color: #D8D0BE; font-variant-numeric: tabular-nums; }
 
+    /* ---------- Pomodoro vote, timer, team, emergency pass ---------- */
+    .vote { margin-top: 18px; padding: 14px; border-radius: 18px; background: rgba(255,255,255,.55); }
+    .vote p { margin: 0 0 10px; font-size: 14px; font-weight: 800; }
+    .vote-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .vote-grid button { padding: 10px 8px; border: 2px solid transparent; border-radius: 12px; background: #fff; color: var(--ink); font: 700 13px var(--font); cursor: pointer; }
+    .vote-grid button b { display: block; font-size: 15px; }
+    .vote-grid button.picked { border-color: var(--ink); background: #FFF3C4; }
+    .vote-tally { margin: 10px 0 0; font-size: 12px; color: #5A4710; }
+    .phase { margin-top: 14px; padding: 10px 14px; border-radius: 14px; background: rgba(255,255,255,.6); font-weight: 800; font-variant-numeric: tabular-nums; }
+    .phase.break { background: #CDEFD9; }
+    .team-tag { padding: 6px 12px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13px; }
+    .pass-btn { width: 100%; height: 48px; margin-top: 14px; border: 2px solid #fff; border-radius: 14px; background: transparent; color: #fff; font: 800 15px var(--font); cursor: pointer; }
+
     @media (prefers-reduced-motion: reduce) { .busted { animation: none; box-shadow: inset 0 0 0 8px var(--red); } }
   </style>
 </head>
 <body>
   <main class="page">
-    <div class="top"><span>Buzzkill</span><span class="room" id="roomTag" hidden></span></div>
+    <div class="top"><span>Buzzkill</span><span class="team-tag" id="teamTag" hidden></span><span class="room" id="roomTag" hidden></span></div>
     <div class="card">
       <div class="bee" id="bee"></div>
       <h1 id="status">Joining…</h1>
       <p id="hint"></p>
       <button class="main" id="start" hidden>I'm ready</button>
+      <div class="phase" id="phase" hidden></div>
+      <div class="vote" id="vote" hidden>
+        <p>🍅 Vote: how should we study?</p>
+        <div class="vote-grid">
+          <button data-choice="sprint"><b>Sprint</b>15 min · 3 break</button>
+          <button data-choice="classic"><b>Classic</b>25 min · 5 break</button>
+          <button data-choice="deep"><b>Deep</b>50 min · 10 break</button>
+          <button data-choice="none"><b>No breaks</b>until it ends</button>
+        </div>
+        <p class="vote-tally" id="tally"></p>
+      </div>
     </div>
     <div id="debug"></div>
   </main>
 
   <!-- Busted: shown while YOUR alarm is on -->
   <section class="busted" id="busted" role="alert" hidden>
-    <p class="b-label">Pickup detected</p>
+    <p class="b-label" id="bLabel">Pickup detected</p>
     <div class="arena" id="arena"><div id="busyBee"></div></div>
     <h2 class="b-title" id="bTitle">Busted</h2>
     <p class="b-roast" id="bRoast"></p>
     <p class="b-hint" id="bHint">Shake your phone to send Buzz away</p>
     <div class="b-meter"><span id="bFill"></span></div>
     <p class="b-secs" id="bSecs">0.0s / 10.0s</p>
+    <button class="pass-btn" id="passBtn" hidden>🆘 Emergency? Use your pass (10 free minutes, once per game)</button>
   </section>
 
   <script src="vendor/supabase.js"></script>
@@ -117,11 +142,14 @@
     };
 
     let token = null;          // login token, sent with every event
-    let gameStatus = null;     // waiting / live / ended
+    let gameStatus = null;     // waiting / live / ended / cancelled
+    let game = {};             // mode, start_time, pomo_work, pomo_break...
+    let mine = {};             // my results row: team, pass, alarm...
+    let me = null;             // my user id
 
     // ---------- 1. Send an event to Supabase (the Pi hears it instantly) ----------
     // keepalive: true lets it finish even while the page is being left
-    function send(type) {
+    function send(type, detail) {
       if (!token) return;
       fetch(`${SUPABASE_URL}/rest/v1/events`, {
         method: "POST",
@@ -132,7 +160,7 @@
           "Content-Type": "application/json",
           Prefer: "return=minimal",
         },
-        body: JSON.stringify({ game: room, type }),
+        body: JSON.stringify(detail ? { game: room, type, detail } : { game: room, type }),
       });
     }
 
@@ -155,25 +183,26 @@
       token = session.access_token;
       sb.auth.onAuthStateChange((_e, s) => { if (s) token = s.access_token; });   // keep token fresh
 
-      const { data: game } = await sb.from("games").select("status").eq("code", room).maybeSingle();
-      if (!room || !game || game.status === "ended" || game.status === "cancelled") {
+      const { data: g } = await sb.from("games").select("*").eq("code", room).maybeSingle();
+      if (!room || !g || g.status === "ended" || g.status === "cancelled") {
         show("worried", "No game running", "Tap the brick, or enter a game PIN on buzzkill.study.");
         return;
       }
       $("roomTag").textContent = room;
       $("roomTag").hidden = false;
+      game = g;
       setStatus(game.status);          // you join for real after tapping "I'm ready"
       $("start").hidden = false;
 
       // Watch live: the game (waiting → live → ended) and MY alarm (on/off, progress)
-      const me = session.user.id;
+      me = session.user.id;
       sb.channel("game-" + room)
         .on("postgres_changes",
             { event: "UPDATE", schema: "public", table: "games", filter: `code=eq.${room}` },
-            p => setStatus(p.new.status))
+            p => { game = p.new; setStatus(p.new.status); })
         .on("postgres_changes",
-            { event: "UPDATE", schema: "public", table: "results", filter: `game=eq.${room}` },
-            p => { if (p.new.user_id === me) setAlarm(p.new); })
+            { event: "*", schema: "public", table: "results", filter: `game=eq.${room}` },
+            p => { if (p.new?.user_id === me) setAlarm(p.new); loadTally(); })
         .subscribe();
     }
 
@@ -182,9 +211,69 @@
       if (s === "waiting" && !joined) show("happy", "Almost in", "Tap I'm ready to join this game.");
       if (s === "waiting" && joined)  show("happy", "You're in!", "Waiting for 4+ players. Then tap the brick to start.");
       if (s === "live")    show("happy", "Phones down.", "Face down on the brick. Buzz is watching.");
+      $("vote").hidden = !(s === "waiting" && joined);
+      if (s === "live") { loadMine(); tick(); }
       if (s === "ended")   { hideBusted(); show("happy", "Game over", "Loading results…"); stopMotion(); setTimeout(() => location.href = "results?room=" + room, 2000); }
       if (s === "cancelled") { hideBusted(); stopMotion(); $("start").hidden = true; show("worried", "Game closed", "The host closed this game. Enter a new PIN on buzzkill.study."); }
     }
+
+    // ---------- Pomodoro vote (lobby) ----------
+    const POMO = { sprint: [15, 3, "Sprint"], classic: [25, 5, "Classic"], deep: [50, 10, "Deep"], none: [0, 0, "No breaks"] };
+    document.querySelectorAll(".vote-grid button").forEach(b => b.onclick = () => {
+      document.querySelectorAll(".vote-grid button").forEach(x => x.classList.toggle("picked", x === b));
+      send("vote", b.dataset.choice);
+    });
+    async function loadTally() {
+      if (gameStatus !== "waiting") return;
+      const { data } = await sb.from("results").select("pomo_vote").eq("game", room);
+      const n = {};
+      (data || []).forEach(r => { if (r.pomo_vote) n[r.pomo_vote] = (n[r.pomo_vote] || 0) + 1; });
+      const parts = Object.entries(n).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${POMO[k]?.[2] ?? k} ${v}`);
+      $("tally").textContent = `${(data || []).length} in the lobby` + (parts.length ? ` · votes: ${parts.join(", ")}` : " · no votes yet (Classic if nobody votes)");
+    }
+
+    // ---------- My row: team + emergency pass ----------
+    async function loadMine() {
+      const { data } = await sb.from("results").select("*").eq("game", room).eq("user_id", me).maybeSingle();
+      if (data) setAlarm(data);
+    }
+    function showTeam() {
+      const t = mine.team;
+      $("teamTag").hidden = !(game.mode === "teams" && t);
+      $("teamTag").textContent = t === 1 ? "🍯 Team Honey" : "🐝 Team Stingers";
+    }
+    const passLeft = () => mine.pass_until ? Math.max(0, (new Date(mine.pass_until) - Date.now()) / 1000) : 0;
+    $("passBtn").onclick = () => { $("passBtn").hidden = true; send("pass"); };
+
+    // ---------- Focus / break timer (every second while live) ----------
+    // Same math as the database: break = the last part of each focus+break cycle, plus 15s grace after.
+    function phaseNow() {
+      if (gameStatus !== "live" || !game.start_time || !(game.pomo_work > 0)) return { free: false };
+      const t = (Date.now() - new Date(game.start_time)) / 1000;
+      const w = game.pomo_work * 60, c = (game.pomo_work + game.pomo_break) * 60, m = t % c;
+      if (m >= w) return { free: true, kind: "break", left: c - m };
+      if (t >= c && m < 15) return { free: true, kind: "grace", left: 15 - m };
+      return { free: false, kind: "focus", left: w - m };
+    }
+    const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+    let wasFree = false;
+    function tick() {
+      if (gameStatus !== "live") { $("phase").hidden = true; return; }
+      const ph = phaseNow(), pass = passLeft();
+      const el = $("phase");
+      el.hidden = false;
+      el.classList.toggle("break", ph.kind === "break");
+      if (pass > 0)                el.textContent = `🆘 Emergency pass · ${mmss(pass)} left. Face down before it runs out!`;
+      else if (ph.kind === "break") el.textContent = `☕ Break · ${mmss(ph.left)} left. Phones are OK!`;
+      else if (ph.kind === "grace") el.textContent = `⏰ Break's over! Phones down in ${Math.ceil(ph.left)}s`;
+      else if (ph.kind === "focus") el.textContent = `🍅 Focus · ${mmss(ph.left)} until break (${POMO[game.pomo_choice]?.[2] ?? ""})`;
+      else                          el.textContent = "🍅 Focus · no breaks this game";
+      // Free time just ended (break or pass) and the phone is still up? That's a pickup.
+      const freeNow = ph.free || pass > 0;
+      if (wasFree && !freeNow && joined && !isDown && !alarmOn) { send("pickup"); showBusted(); }
+      wasFree = freeNow;
+    }
+    setInterval(tick, 1000);
 
     // ---------- Lobby: stay "in" while waiting ----------
     // While the game hasn't started, check in every 8 seconds. If this page closes or goes quiet
@@ -237,15 +326,23 @@
     });
     let topUp = null;
 
-    function showBusted() {
+    async function showBusted() {
       if (bustedOn) return;
       bustedOn = true;
+      // Teams: busted because a teammate picked up?
+      const byTeammate = mine.alarm_cause && mine.alarm_cause !== me && mine.alarm_on;
+      $("bLabel").textContent = byTeammate ? "Your teammate picked up" : "Pickup detected";
+      $("passBtn").hidden = byTeammate || !!mine.pass_used;
+      if (byTeammate) {
+        const { data: p } = await sb.from("profiles").select("username").eq("id", mine.alarm_cause).maybeSingle();
+        $("bRoast").textContent = `${p?.username ?? "A teammate"} slipped, so your whole team has to shake.`;
+      }
       shaking = false;
       meter.reset();
       meter.start();
       $("busted").classList.remove("done");
       $("bTitle").textContent = "Busted";
-      $("bRoast").textContent = ROASTS[Math.floor(Math.random() * ROASTS.length)];
+      if (!byTeammate) $("bRoast").textContent = ROASTS[Math.floor(Math.random() * ROASTS.length)];
       $("bHint").textContent = "Shake your phone to send Buzz away";
       Buzz.home(busyBee);
       Buzz.setMood(busyBee, "worried");
@@ -283,14 +380,21 @@
     // The database decides when your alarm is really on or off
     let alarmOn = false;
     function setAlarm(r) {
+      mine = r;
+      showTeam();
       alarmOn = r.alarm_on && gameStatus === "live";
       if (alarmOn) {
+        if (bustedOn) $("passBtn").hidden = !!r.pass_used || r.alarm_cause !== me;
         showBusted();
         if (r.shake_secs_needed && Number(r.shake_secs_needed) !== shakeSeconds) {
           shakeSeconds = Number(r.shake_secs_needed);
           meter.setSeconds(shakeSeconds);
         }
         meter.sync(Number(r.shake_secs_done || 0) * 1000);   // stay in step with the database's clock
+      } else if (gameStatus === "live" && passLeft() > 0) {
+        hideBusted();
+        show("happy", "Emergency pass on", "Take care of it. Pickups don't count for 10 minutes.");
+        tick();
       } else if (gameStatus === "live") {
         hideBusted();
         show("happy", "Alarm off", `Pickup #${r.pickups} counted. Put it back face down.`);
@@ -318,6 +422,7 @@
       send("join");
       joined = true;
       setStatus(gameStatus);
+      setTimeout(loadTally, 800);
 
       await keepAwake();
       window.addEventListener("devicemotion", onMotion);
@@ -343,7 +448,7 @@
       const sim = cosine(v, baseline);
       if (isDown && sim < 0.7) {                         // tilted more than ~45°
         isDown = false;
-        if (gameStatus === "live" && Date.now() - lastPickup > 2000) {
+        if (gameStatus === "live" && Date.now() - lastPickup > 2000 && !phaseNow().free && passLeft() === 0) {
           lastPickup = Date.now();
           send("pickup");
           showBusted();                                   // show Buzz right away; the database confirms

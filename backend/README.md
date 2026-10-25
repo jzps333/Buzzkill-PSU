@@ -5,7 +5,7 @@ Supabase handles logins and the database. There's no server code to run for this
 ## Setup (once)
 
 1. Make a project at supabase.com.
-2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same, in order, with `events.sql`, `security.sql`, `game.sql`, `shake_ramp.sql`, `friends.sql`, `phone_only.sql`, `lobby.sql`. (All are already done for the buzzkill project.)
+2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same, in order, with `events.sql`, `security.sql`, `game.sql`, `shake_ramp.sql`, `friends.sql`, `phone_only.sql`, `lobby.sql`, `features.sql`. (All are already done for the buzzkill project.)
 3. **Authentication → Sign In / Providers**:
    - Turn **on** "Allow anonymous sign-ins" (this is how guests work).
    - Turn **off** "Confirm email" (so signups work instantly at the hackathon).
@@ -44,6 +44,13 @@ The database is the referee. Phones only send events; a trigger does the rest:
 - `shake_stop` → phone stopped shaking early: `is_shaking = false`, sound comes back
 - `create_game()`, `start_game(code)`, `finish_game(code)` run games. `start_game` refuses to start with fewer than 4 players, for everyone. Only the Pi (secret key) or the person who created the game can call them. `finish_game` also calculates payouts.
 - `prune_lobby(code)` drops waiting players silent for 25s (host page calls it every 8s; `start_game` does it too). `cancel_game(code)` closes a game that hasn't started (status `cancelled`, never counts in stats)
+
+### Emergency pass, teams, pomodoro (features.sql)
+
+- `vote` (waiting, `detail` = sprint / classic / deep / none) → pomodoro vote. `start_game` picks the most votes (ties and no votes = classic) and sets `pomo_work` / `pomo_break` minutes.
+- During a break (and 15s after it), pickups don't count. `on_break(code)` tells you if it's break time.
+- `pass` → right after your own pickup: cancels it and gives 10 free minutes (`pass_until`). Once per game (`pass_used`).
+- `create_game(p_mode)` with `'solo'` or `'teams'`. In teams, `start_game` splits players into `team` 1 (Honey) and 2 (Stingers). One pickup busts the whole team (`alarm_cause` = who picked up). Shake time grows with the team's total pickups. Fewest team pickups wins.
 
 See `hardware/README.md` for what the Pi does.
 
