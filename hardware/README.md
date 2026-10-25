@@ -1,120 +1,169 @@
-# Hardware
+# Hardware: the Buzzkill brick
 
-Raspberry Pi 4B code for the brick: NFC tag (ST25DV64K), touch sensor, speaker.
+A Raspberry Pi 4B in a box in the middle of the table. It runs the game with one touch pad, talks through a
+Bluetooth speaker, and roasts whoever picks up their phone. Supabase is the referee; the Pi just listens and talks.
 
-## What the Pi does (the database does the rest)
+| Part | What it does |
+|---|---|
+| Raspberry Pi 4B + Grove Base Hat | runs `brick.py` and `speaker.py` |
+| Grove Touch Sensor (port **D5**) | the only button: start, scoreboard, end |
+| JBL Go 3 (Bluetooth) | the brick's voice: roasts + announcements (ElevenLabs) |
+| NFC sticker / QR code on the lid | `https://buzzkill-psu.vercel.app/brick` → joins the brick's current game |
+| Grove LCD 16x2 (optional, I2C) | PIN and live game info |
+| Grove NFC ST25DV64 (optional, I2C) | the Pi can rewrite it per game, but it needs a separate 13.56 MHz antenna |
 
-Supabase is the referee: it counts pickups, runs the shake penalty, and pays out.
-The Pi only needs to do 3 things, using the secret key in `.env`:
+Two programs run on the Pi (both start on boot):
+- **`brick.py`**: the touch sensor, the brick's announcements (PIN, scoreboard, time left) and the LCD.
+- **`speaker.py`**: plays an AI roast on loop while someone is busted, stops while they shake.
 
-**1. Touch sensor → run the game** (call these Supabase functions):
 
-| Touch | Call | What happens |
-|---|---|---|
-| Tap (no game) | `create_game()` (solo) or `create_game({"p_mode": "teams"})` → returns a code like `4F2A9C` | Write `https://www.buzzkill.study/join?room=CODE` to the NFC tag |
-| Tap (waiting) | `start_game(p_code)` | Game goes live. Fails with an error if fewer than 4 players joined (or an odd number in teams mode: teams are always 2v2, 3v3...), so play a "need more players" sound |
-| Hold 3 s | `finish_game(p_code)` | Game ends, SOL payouts are calculated |
-| (optional) | `cancel_game(p_code)` | Close a game that hasn't started yet |
+## Quick start (on the Pi, over SSH)
 
-```python
-code = sb.rpc("create_game").execute().data
-sb.rpc("start_game", {"p_code": code}).execute()
-sb.rpc("finish_game", {"p_code": code}).execute()
+First time only: `cd ~/Buzzkill-PSU/hardware && bash setup.sh && sudo reboot`, then pair the speaker (see [Pairing the JBL](#pairing-the-jbl-go-3)).
+
+**1. Get the latest code**
+```bash
+cd ~/Buzzkill-PSU && git pull && cd hardware
 ```
 
-**2. Listen for alarms → play sounds.** This part is done: `speaker.py` (see "Bluetooth speaker" below). Subscribe to Realtime `UPDATE`s on the `results` table
-(filter `game=eq.CODE`). Each row has `user_id`, `alarm_on`, `is_shaking`, `pickups`, `shake_secs_needed`, `shake_secs_done`.
-
-**Play the roast on loop while `alarm_on` is true AND `is_shaking` is false.** Otherwise, stay silent.
-
-- Pickup → `alarm_on = true` → sound plays
-- They start shaking → `is_shaking = true` → pause the sound
-- They stop before their time is up → `is_shaking = false` → sound plays again
-- They shook long enough → `alarm_on = false` → sound off for good
-
-Safety rule: while someone is shaking, their row updates about twice a second. If you get no update
-for 2 seconds while `is_shaking` is still true (their phone died or lost signal), treat it as stopped and play the sound.
-
-In **teams** mode, one pickup turns `alarm_on` on for every player on that team, so several rows can be busted at once.
-Play the sound while ANY player is busted and not shaking. `alarm_cause` says whose pickup it was (good for the roast: "Alex slipped!").
-
-**AI roasts (Gemini writes it, ElevenLabs says it).** Done in `speaker.py`. When a new pickup happens, ask for a roast once,
-then loop that mp3 with the same rules as above. Teams: ask once, for the `alarm_cause` player.
-
-```python
-import requests, os
-r = requests.post(f"{os.environ['SUPABASE_URL']}/functions/v1/roast",
-                  headers={"apikey": os.environ["SUPABASE_SERVICE_KEY"], "Content-Type": "application/json"},
-                  json={"game": code, "user_id": busted_user_id}, timeout=12)
-if r.headers.get("content-type", "").startswith("audio"):
-    open("/tmp/roast.mp3", "wb").write(r.content)      # play on loop, e.g. mpg123 --loop -1 /tmp/roast.mp3
-else:
-    text = r.json().get("text")                          # no voice available: use espeak, or a built-in sound
+**2. Connect the JBL Go 3** (turn it on; it's already paired)
+```bash
+bluetoothctl connect 18:90:67:DE:D2:E1      # wait for "Connection successful"
+espeak-ng "Put your phone down"             # should come out of the JBL
 ```
-It takes 1-3 seconds, so play a buzzer sound while waiting. If it fails, play your built-in roasts.
+No sound: `wpctl status`, find the JBL under Sinks, `wpctl set-default <number>`.
 
-**Optional, nice for the demo:** announce breaks. The game row has `start_time`, `pomo_work` and `pomo_break` (minutes);
-call `on_break(p_code)` to check, and say "Break time!" / "Break's over, phones down!" when it changes.
+**3. Settings** (once)
+```bash
+cp -n .env.example .env     # the JBL address is already filled in
+nano .env                   # paste the sb_secret key into SUPABASE_SERVICE_KEY, Ctrl+O Enter, Ctrl+X
+```
+The key is in Supabase → Project Settings → API Keys → Secret keys. `.env` is ignored by git: never commit the key.
+Without it, tapping still works and the brick says "not connected to the game yet" (good for testing touch + speaker).
 
-**3. Players joining:** phones handle it, and new rows show up in `results`. While the game is waiting,
-call `prune_lobby(p_code)` every ~8 seconds so players who closed their browser get removed
-(rows are deleted, so listen for Realtime `DELETE`s too if you show a player count).
+**4. Start it** (also starts on every boot)
+```bash
+systemctl --user enable --now buzzkill-speaker buzzkill
+systemctl --user restart buzzkill-speaker buzzkill     # after every git pull
+bash check.sh                                           # ✅ / ❌ for every part
+journalctl --user -u buzzkill-speaker -u buzzkill -f    # live logs
+```
 
-## Bluetooth speaker (speaker.py)
+**5. Play**
 
-The Pi reads the roasts out loud on a Bluetooth speaker, so the host's laptop doesn't have to.
+| You | The brick says (ElevenLabs voice) |
+|---|---|
+| **Tap** | "New game. Your PIN is 4, F, 2, A, 9, C." (**double tap** = teams game) |
+| Players tap the NFC sticker, scan the QR, or type the PIN at buzzkill.study | |
+| **Tap** (under 4 players) | the PIN again + who's in: "Need 2 more to start." |
+| **Tap** (4+ players) | "Game on. Phones down. Good luck." |
+| Someone picks up their phone | an AI roast on loop until they shake their phone |
+| **Tap** during the game | time left + scoreboard: "Focus time, 18 minutes left. Alex is losing, with 3 pickups. Sam is still clean." |
+| **Hold 3 s** | "Game over. Check your phones for results." (or closes a game that never started) |
 
-How it fits together:
-- `speaker.py` checks in with Supabase every 5 seconds (`speakers` table), so the host page shows **Buzzkill speaker** with a green dot.
-- When a host opens a game on `/host` and the speaker is online, the page sends that game's roasts to the Pi automatically
-  (`set_game_speaker`). The host can switch between **Buzzkill speaker**, **This laptop** and **Off** at any time.
-- The Pi only talks for the game that picked it. One game at a time: the last game to pick the speaker gets it.
-- If the Pi goes offline mid-game (no check-in for 20 s), the laptop takes over until it's back.
+Games started from the website's `/host` page with **Buzzkill speaker** picked work with the brick too.
 
-### Setup (once, on the Pi)
 
-1. Run `backend/speaker.sql` in the Supabase SQL Editor (once for the project).
-2. Install the voice and get the code:
-   ```bash
-   sudo apt install -y espeak-ng mpg123 python3-requests
-   git clone https://github.com/jzps333/Buzzkill-PSU ~/Buzzkill-PSU
-   cd ~/Buzzkill-PSU/hardware && cp .env.example .env   # then paste the secret key into .env
-   ```
-3. Pair the speaker (put it in pairing mode first):
-   ```bash
-   bluetoothctl
-     scan on              # wait for your speaker to show up, copy its address (AA:BB:CC:DD:EE:FF)
-     pair AA:BB:CC:DD:EE:FF
-     trust AA:BB:CC:DD:EE:FF
-     connect AA:BB:CC:DD:EE:FF
-     exit
-   ```
-   Put that address in `.env` as `BT_SPEAKER_MAC` and the Pi reconnects to the speaker whenever it drops.
-4. Test it: `python3 speaker.py --test` should say a roast out of the speaker.
-   No sound? Run `wpctl status` and make sure the Bluetooth speaker is the default sink (`wpctl set-default <id>`).
-5. Start it on boot. It runs as your user (not root) so it can reach the Bluetooth audio:
-   ```bash
-   mkdir -p ~/.config/systemd/user
-   cp ~/Buzzkill-PSU/hardware/buzzkill-speaker.service ~/.config/systemd/user/
-   systemctl --user daemon-reload
-   systemctl --user enable --now buzzkill-speaker
-   sudo loginctl enable-linger $USER      # keep it running without anyone logged in
-   journalctl --user -u buzzkill-speaker -f   # watch the logs
-   ```
+## Troubleshooting
 
-It plays the same AI roasts as the host page (one per pickup; in teams, one per slip for the whole team).
-If the roast function is down or out of credits, it reads the text with espeak-ng, or uses a built-in roast.
-Set `AI_ROASTS=0` in `.env` to skip the AI and save credits.
+| Problem | Fix |
+|---|---|
+| No sound | `bluetoothctl connect 18:90:67:DE:D2:E1`, then `wpctl status` |
+| Robot voice instead of ElevenLabs | `journalctl --user -u buzzkill -n 30` says why (key, credits, function not deployed) |
+| Tap does nothing | `journalctl --user -u buzzkill -n 30` |
+| Logs say 401 / Invalid API key | the key in `.env` is wrong or still the placeholder |
+| Logs mention the `speakers` table | run `backend/speaker.sql` in the Supabase SQL Editor |
+| Anything else | `bash check.sh` |
 
-## Backup
+**Backup:** if the brick is down, anyone logged in can run a game from `https://www.buzzkill.study/host`.
+It plays the roasts on the brick's speaker if `speaker.py` is online, or from the laptop if not.
 
-If the brick isn't working, anyone logged in can run a game from `https://www.buzzkill.study/host`.
-It plays the roasts out loud on the Bluetooth speaker if the Pi is online, or from the laptop if not.
 
-## Wiring (Pi 4B, 3.3V only)
+## Wiring (Grove Base Hat)
 
-| Part | Pin | Pi pin |
+Everything plugs into the Grove Base Hat with Grove cables. No loose wires.
+
+| Part | Port | Pi pins |
 |---|---|---|
-| ST25DV64K NFC | VCC / GND / SDA / SCL | 1 / 6 / 3 / 5 |
-| Touch sensor (TTP223) | VCC / GND / SIG | 17 / 9 / 11 (GPIO 17) |
-| Speaker | Bluetooth (see above), or 3.5 mm jack / USB | |
+| Touch sensor | **D5** | GPIO 5 (another D port: set `TOUCH_PIN` in `.env`, e.g. D16 = 16) |
+| LCD (optional) | any **I2C** port | SDA / SCL, address `3e` |
+| NFC board (optional) | any **I2C** port | SDA / SCL, addresses `53`, `57`, `2d` |
+| JBL Go 3 | Bluetooth | |
+
+Don't use the **A0 / A2 / A4 / A6** ports: they go to the hat's analog chip, not to the Pi's pins.
+Test the parts on their own: `python3 test_touch.py`, `python3 lcd.py "Hello" "World"`, `i2cdetect -y 1`.
+
+
+## Pairing the JBL Go 3
+
+Our speaker's address is `18:90:67:DE:D2:E1`. Turn it on and hold its Bluetooth button until it flashes blue fast
+(turn Bluetooth off on any phone it was connected to). Then type these **one at a time** (pasting several lines doesn't work):
+```bash
+sudo rfkill unblock bluetooth
+bluetoothctl
+```
+```
+power on
+scan on                        # wait for: [NEW] Device 18:90:67:DE:D2:E1 JBL Go 3
+pair 18:90:67:DE:D2:E1         # right away, WHILE it's still scanning
+trust 18:90:67:DE:D2:E1
+connect 18:90:67:DE:D2:E1      # wait for "Connection successful"
+scan off
+info 18:90:67:DE:D2:E1         # Paired: yes, Trusted: yes, Connected: yes
+exit
+```
+
+| You see | Means / fix |
+|---|---|
+| `Device ... not available` | the scan already stopped: `scan on` again and pair while it's scanning |
+| `Failed to pair: AlreadyExists` | already paired: skip to `trust` and `connect` |
+| Lots of `[DEL] Device ...` lines | normal: after `scan off` the Pi forgets the other nearby devices |
+| `Failed to pair` (anything else) | `remove 18:90:67:DE:D2:E1`, pairing mode again, start over |
+| `Failed to connect` | JBL is off or connected to a phone: turn that phone's Bluetooth off, `connect` again |
+
+Once paired, `speaker.py` reconnects to `BT_SPEAKER_MAC` by itself every 10 seconds.
+A different speaker: put its address in `.env` as `BT_SPEAKER_MAC`.
+
+
+## How the Pi talks to the backend
+
+Supabase is the referee: a database trigger counts pickups, runs the shake penalty and pays out
+(see `backend/README.md`). The Pi uses the project's secret key and plain REST calls, about twice a second.
+
+```
+Phones ──events──► Supabase (database = referee) ◄──every 0.5 s── Pi
+                                                    ├─ speaker.py → JBL: roasts busted players
+                                                    └─ brick.py   → touch pad, announcements, LCD
+```
+
+**Which game the Pi follows:** the open game with `games.speaker = 'brick'`. The brick sets it when you tap to create a game,
+and the `/host` page sets it when the host picks **Buzzkill speaker** (`set_game_speaker`). One game at a time.
+`speaker.py` checks in every 5 seconds (`speakers.last_seen`) so `/host` shows the speaker online; after 20 s without
+a check-in the laptop takes over the roasts.
+
+**Touch pad → database:** `create_game(p_mode)`, `start_game(p_code)` (needs 4+ players, even teams),
+`finish_game(p_code)` (ends + pays out), `cancel_game(p_code)`, and `prune_lobby(p_code)` every 8 s while waiting.
+
+**When to roast:** play on loop while a player's `alarm_on` is true and they're not shaking.
+- Pickup → `alarm_on = true` → roast plays
+- Shaking → `is_shaking = true` → paused. Stopped early → plays again. Shook long enough → `alarm_on = false`, silent.
+- Shaking but no new shake for 2 s (phone died, lost signal) → counts as stopped.
+- Teams: one pickup busts the whole team; they share one roast about `alarm_cause` (who slipped).
+
+**AI voice:** the `roast` Supabase Edge Function. `{game, user_id}` → Gemini writes a roast from the player's real stats,
+ElevenLabs voices it (mp3). `{say: "text"}` → any short line in the same voice (the brick's announcements).
+If it fails, the Pi reads the text with espeak-ng, or uses a built-in roast. `AI_ROASTS=0` in `.env` = always espeak.
+
+
+## Files
+
+| File | What it is |
+|---|---|
+| `brick.py` | touch pad, announcements, LCD; runs as `buzzkill.service` |
+| `speaker.py` | roasts on the Bluetooth speaker; runs as `buzzkill-speaker.service` (`--test` says one roast) |
+| `setup.sh` | one-time install: packages, I2C, PipeWire Bluetooth audio, both services |
+| `check.sh` | checks settings, speaker, backend, LCD and services, with a fix for each ❌ |
+| `lcd.py` | Grove 16x2 LCD driver (`python3 lcd.py "top" "bottom"` to test) |
+| `nfc.py` | writes a link to the ST25DV64 NFC board (`--read`, `--check`, `--fix-rf`) |
+| `test_touch.py` | prints `touched` when you touch the pad |
+| `.env.example` | settings template: copy to `.env` and add the secret key |
