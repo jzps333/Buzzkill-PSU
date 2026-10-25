@@ -79,7 +79,22 @@ def get(table, **params):
     return r.json()
 
 
+_heartbeat_ok = True
+
+
 def heartbeat():
+    # Lets the website's host page show "Buzzkill speaker online". If it fails, roasts still work.
+    global _heartbeat_ok
+    try:
+        _heartbeat()
+        _heartbeat_ok = True
+    except requests.RequestException as e:
+        if _heartbeat_ok:
+            log("Check-in failed (the host page will show the speaker offline; run backend/speaker.sql):", e)
+        _heartbeat_ok = False
+
+
+def _heartbeat():
     r = http.post(f"{URL}/speakers",
                   headers={"Prefer": "resolution=merge-duplicates"},
                   json={"id": SPEAKER_ID, "name": SPEAKER_NAME,
@@ -88,12 +103,27 @@ def heartbeat():
     r.raise_for_status()
 
 
+GAME_FILE = Path(__file__).with_name(".game")    # brick.py writes the code of the game it's running here
+
+
 def current_game():
-    """The open game that picked this speaker. A live game wins over one still waiting."""
-    games = get("games", select="code,status", speaker=f"eq.{SPEAKER_ID}",
-                status="in.(waiting,live)")
-    games.sort(key=lambda g: g["status"] != "live")
-    return games[0] if games else None
+    """The open game that picked this speaker (a live one wins over one still waiting).
+    If the database can't say (no games.speaker column), the game the brick on this Pi is running."""
+    try:
+        games = get("games", select="*", speaker=f"eq.{SPEAKER_ID}", status="in.(waiting,live)")
+        games.sort(key=lambda g: g["status"] != "live")
+        if games:
+            return games[0]
+    except requests.RequestException:
+        pass
+    try:
+        code = GAME_FILE.read_text().strip()
+    except OSError:
+        return None
+    if not code:
+        return None
+    rows = get("games", select="*", code=f"eq.{code}")
+    return rows[0] if rows and rows[0]["status"] in ("waiting", "live") else None
 
 
 # ---------- AI roasts: one per pickup ----------
@@ -251,17 +281,16 @@ def main():
                 roasts.clear()
                 log("Game", code, "is live")
 
-            players = get("results", game=f"eq.{code}",
-                          select="user_id,pickups,alarm_on,alarm_cause,is_shaking,last_shake_at,profiles(username)")
+            players = get("results", game=f"eq.{code}", select="*,profiles(username)")    # "*": never fails on a missing column
 
             # Sound plays when your alarm is on and you're NOT shaking.
             # Still "shaking" but no new shake for 2s (phone died, lost signal) = stopped.
             loud = []
             for p in players:
                 uid = p["user_id"]
-                if shake_seen.get(uid, (None,))[0] != p["last_shake_at"]:
-                    shake_seen[uid] = (p["last_shake_at"], now)
-                shaking_now = p["is_shaking"] and now - shake_seen[uid][1] < SHAKE_TIMEOUT
+                if shake_seen.get(uid, (None,))[0] != p.get("last_shake_at"):
+                    shake_seen[uid] = (p.get("last_shake_at"), now)
+                shaking_now = p.get("is_shaking") and now - shake_seen[uid][1] < SHAKE_TIMEOUT
                 if p["alarm_on"] and not shaking_now:
                     loud.append(p)
 
