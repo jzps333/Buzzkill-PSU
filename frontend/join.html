@@ -100,6 +100,7 @@
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
   <script src="buzz.js"></script>
+  <script src="device.js"></script>
   <script>
     // Room codes are only letters and numbers. Anything else is ignored.
     const rawRoom = new URLSearchParams(location.search).get("room") || "";
@@ -136,7 +137,16 @@
     }
 
     // ---------- 2. Join ----------
+    let joined = false;        // becomes true after "I'm ready" proves this is a phone
+
     async function join() {
+      // Phones only: the phone's motion sensor is the whole game
+      if (!Device.isPhone()) {
+        show("worried", "Join from your phone",
+             room ? `Open buzzkill.study on your phone and enter PIN ${room}.` : "Open buzzkill.study on your phone and enter the game PIN.");
+        return;
+      }
+
       const { data: { session } } = await sb.auth.getSession();
       if (!session) {                                         // not logged in → login page, then come back
         // not signed in → landing page with the PIN filled in, then nickname, then back here
@@ -153,8 +163,7 @@
       }
       $("roomTag").textContent = room;
       $("roomTag").hidden = false;
-      send("join");
-      setStatus(game.status);
+      setStatus(game.status);          // you join for real after tapping "I'm ready"
       $("start").hidden = false;
 
       // Watch live: the game (waiting → live → ended) and MY alarm (on/off, progress)
@@ -171,7 +180,8 @@
 
     function setStatus(s) {
       gameStatus = s;
-      if (s === "waiting") show("happy", "You're in!", "Waiting for 4+ players. Then tap the brick to start.");
+      if (s === "waiting" && !joined) show("happy", "Almost in", "Tap I'm ready to join this game.");
+      if (s === "waiting" && joined)  show("happy", "You're in!", "Waiting for 4+ players. Then tap the brick to start.");
       if (s === "live")    show("happy", "Phones down.", "Face down on the brick. Buzz is watching.");
       if (s === "ended")   { hideBusted(); show("happy", "Game over", "Loading results…"); stopMotion(); setTimeout(() => location.href = "results?room=" + room, 2000); }
     }
@@ -288,6 +298,19 @@
           return;
         }
       }
+
+      // Real check: does this device actually have a motion sensor? Laptops don't.
+      $("start").disabled = true;
+      $("hint").textContent = "Checking your phone's motion sensor…";
+      if (!await Device.hasMotionSensor()) {
+        $("start").disabled = false;
+        show("worried", "No motion sensor found", "Buzzkill only works on a phone. Open this page on your phone.");
+        return;
+      }
+      send("join");
+      joined = true;
+      setStatus(gameStatus);
+
       await keepAwake();
       window.addEventListener("devicemotion", onMotion);
       $("start").hidden = true;

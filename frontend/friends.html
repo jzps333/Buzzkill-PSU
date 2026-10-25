@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzkill · Friends</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root { --cream: #FFFAEB; --honey: #F5D35A; --sand: #F4EEDC; --ink: #1F1B16; --ink-2: #5E574B; --line: #EAE2CC; --white: #FFF;
+            --green: #2F8F57; --red: #9B1C1C; --font: "Plus Jakarta Sans", system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--cream); color: var(--ink); font: 500 16px/1.5 var(--font); }
+    [hidden] { display: none !important; }
+    main { width: min(560px, 100% - 32px); margin: 0 auto; padding: 24px 0 56px; }
+    .back { color: var(--ink-2); text-decoration: none; font-weight: 700; font-size: 14px; }
+    h1 { margin: 12px 0 4px; font-size: 32px; font-weight: 800; letter-spacing: -.8px; }
+    .sub { margin: 0 0 20px; color: var(--ink-2); }
+    .card { background: var(--white); border: 1px solid var(--line); border-radius: 20px; padding: 18px; margin-top: 16px; }
+    .card h2 { margin: 0 0 10px; font-size: 17px; font-weight: 800; }
+    form { display: flex; gap: 8px; }
+    input { flex: 1; min-width: 0; height: 46px; padding: 0 14px; border: 2px solid var(--ink); border-radius: 12px; font: 700 16px var(--font); background: var(--white); color: var(--ink); }
+    .btn { height: 46px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--ink); color: var(--white); font: 700 14px var(--font); cursor: pointer; white-space: nowrap; }
+    .btn.small { height: 34px; padding: 0 14px; font-size: 13px; }
+    .btn.light { background: var(--sand); color: var(--ink); }
+    .btn.danger { background: var(--red); }
+    .msg { min-height: 1.4em; margin: 10px 0 0; font-size: 14px; font-weight: 700; }
+    .msg.bad { color: var(--red); } .msg.good { color: var(--green); }
+    .row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+    .row:first-of-type { border-top: 0; }
+    .rank { width: 26px; font-weight: 800; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+    .who { flex: 1; min-width: 0; }
+    .who b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .who span { font-size: 13px; color: var(--ink-2); }
+    .me { background: #FFF3C4; margin: 0 -18px; padding: 12px 18px; }
+    .empty { color: var(--ink-2); font-size: 14px; margin: 0; }
+    .actions { display: flex; gap: 6px; }
+    .badge { display: inline-block; min-width: 22px; padding: 0 7px; margin-left: 6px; border-radius: 99px; background: var(--honey); font-size: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="/dashboard">← Dashboard</a>
+    <h1>Friends</h1>
+    <p class="sub">Add your study group. See who's actually focused.</p>
+
+    <p class="msg bad" id="guestMsg" hidden>Guests can't add friends. <a href="/login">Make an account</a> first.</p>
+
+    <div id="app">
+      <div class="card">
+        <h2>Add a friend</h2>
+        <form id="addForm">
+          <input id="username" placeholder="Their username" maxlength="30" autocomplete="off" autocapitalize="off" required>
+          <button class="btn" id="addBtn">Send</button>
+        </form>
+        <p class="msg" id="addMsg"></p>
+      </div>
+
+      <div class="card" id="incomingCard" hidden>
+        <h2>Requests <span class="badge" id="incomingCount"></span></h2>
+        <div id="incoming"></div>
+      </div>
+
+      <div class="card">
+        <h2>Most focused friends</h2>
+        <div id="friends"><p class="empty">Loading…</p></div>
+      </div>
+
+      <div class="card" id="sentCard" hidden>
+        <h2>Sent</h2>
+        <div id="sent"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="config.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    // Build elements with textContent so usernames can never run code
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    let me = null;
+
+    async function init() {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) { location.href = "/login?next=/friends"; return; }
+      me = session.user.id;
+      const { data: profile } = await sb.from("profiles").select("is_guest").eq("id", me).single();
+      if (profile?.is_guest) { $("guestMsg").hidden = false; $("app").hidden = true; return; }
+      load();
+    }
+
+    // ---------- Load everything ----------
+    async function load() {
+      const rows = (await sb.from("friendships").select("id, requester, addressee, status")).data || [];
+      const other = r => (r.requester === me ? r.addressee : r.requester);
+      const ids = [...new Set(rows.map(other).concat(me))];
+
+      const [p1, p2, p3] = await Promise.all([
+        sb.from("profiles").select("id, username").in("id", ids),
+        sb.from("leaderboard").select("id, games, pickups_per_hour, clean_pct").in("id", ids),
+        sb.from("rivalries").select("opponent_id, wins, losses").eq("user_id", me),
+      ]);
+      const profiles = p1.data || [], stats = p2.data || [], rivals = p3.data || [];
+      const name = id => profiles.find(p => p.id === id)?.username ?? "player";
+      const stat = id => stats.find(s => s.id === id);
+      const vs = id => rivals.find(r => r.opponent_id === id);
+
+      const incoming = rows.filter(r => r.status === "pending" && r.addressee === me);
+      const sent     = rows.filter(r => r.status === "pending" && r.requester === me);
+      const friends  = rows.filter(r => r.status === "accepted");
+
+      // Incoming requests
+      $("incomingCard").hidden = !incoming.length;
+      $("incomingCount").textContent = incoming.length;
+      $("incoming").replaceChildren(...incoming.map(r => row(name(other(r)), "wants to be friends", [
+        button("Accept", "", () => accept(r.id)),
+        button("Decline", "light", () => remove(r.id)),
+      ])));
+
+      // Sent requests
+      $("sentCard").hidden = !sent.length;
+      $("sent").replaceChildren(...sent.map(r => row(name(other(r)), "waiting for them to accept", [
+        button("Cancel", "light", () => remove(r.id)),
+      ])));
+
+      // Friends + you, ranked by fewest pickups per hour (no games yet = bottom)
+      const people = friends.map(r => ({ id: other(r), fid: r.id })).concat({ id: me });
+      people.sort((a, b) => (stat(a.id)?.pickups_per_hour ?? Infinity) - (stat(b.id)?.pickups_per_hour ?? Infinity));
+
+      if (!friends.length) {
+        $("friends").replaceChildren(el("p", "empty", "No friends yet. Add your study group by username above."));
+        return;
+      }
+      $("friends").replaceChildren(...people.map((p, i) => {
+        const s = stat(p.id);
+        let line = s ? `${s.pickups_per_hour} pickups/hr · ${s.clean_pct}% clean · ${s.games} games` : "No games yet";
+        const r = vs(p.id);
+        if (r && (r.wins || r.losses)) line += ` · you're ${r.wins}–${r.losses} vs them`;
+        const isMe = p.id === me;
+        const div = row(isMe ? `${name(me)} (you)` : name(p.id), line, isMe ? [] : [removeButton(p.fid)], i + 1);
+        if (isMe) div.classList.add("me");
+        return div;
+      }));
+    }
+
+    function row(title, detail, buttons, rank) {
+      const div = el("div", "row");
+      if (rank) div.append(el("span", "rank", rank));
+      const who = el("div", "who");
+      who.append(el("b", "", title), el("span", "", detail));
+      const actions = el("div", "actions");
+      actions.append(...buttons);
+      div.append(who, actions);
+      return div;
+    }
+
+    function button(text, cls, onClick) {
+      const b = el("button", "btn small " + cls, text);
+      b.onclick = onClick;
+      return b;
+    }
+
+    // "Remove" asks twice so nobody unfriends by accident
+    function removeButton(fid) {
+      const b = button("Remove", "light", () => {
+        if (b.dataset.sure) return remove(fid);
+        b.dataset.sure = "1";
+        b.textContent = "Sure?";
+        b.className = "btn small danger";
+        setTimeout(() => { delete b.dataset.sure; b.textContent = "Remove"; b.className = "btn small light"; }, 3000);
+      });
+      return b;
+    }
+
+    // ---------- Actions ----------
+    $("addForm").onsubmit = async e => {
+      e.preventDefault();
+      const msg = $("addMsg");
+      $("addBtn").disabled = true;
+      const { data, error } = await sb.rpc("send_friend_request", { p_username: $("username").value });
+      $("addBtn").disabled = false;
+      if (error) { msg.className = "msg bad"; msg.textContent = error.message; return; }
+      msg.className = "msg good";
+      msg.textContent = {
+        sent: "Request sent!",
+        accepted: "They'd already asked you, so you're friends now!",
+        already_sent: "You already sent them a request.",
+        already_friends: "You're already friends.",
+      }[data] ?? "Done.";
+      $("username").value = "";
+      load();
+    };
+
+    async function accept(id) {
+      const { error } = await sb.rpc("accept_friend_request", { p_id: id });
+      if (error) alertMsg(error.message);
+      load();
+    }
+
+    async function remove(id) {
+      const { error } = await sb.from("friendships").delete().eq("id", id);
+      if (error) alertMsg(error.message);
+      load();
+    }
+
+    function alertMsg(text) { $("addMsg").className = "msg bad"; $("addMsg").textContent = text; }
+
+    init();
+  </script>
+</body>
+</html>
