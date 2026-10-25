@@ -2,12 +2,13 @@
 Roasts on the speaker are speaker.py's job.
 
 Touch sensor (the speaker answers every tap):
-  tap         no game -> new SOLO game
-              waiting -> says the PIN and who's in (every time, until the game starts)
+  tap         no game -> new SOLO game (right after a game ends too: one tap = the next game)
+              waiting -> says the PIN and how many people are in (every time, until the game starts)
               live    -> says the time left and the scoreboard (and flips the LCD page)
   double tap  no game -> new TEAMS game
               waiting -> start the game (4+ players)
-  hold 3 s    end the game (or close it if it never started)
+  triple tap  end the game and say who won (or close it if it never started)
+  hold 3 s    same as triple tap
 
 LCD: the PIN to join while waiting, then the clock / pomodoro, who's busted, who's winning.
 The brick follows any open game that uses this speaker, so games started from /host show up too.
@@ -205,17 +206,40 @@ def on_double():
         on_tap()
 
 
-def on_hold():
-    if not ONLINE or code is None:
-        return
+def end_game():
+    """Triple tap or hold: end a live game (and say who won), or close one that never started."""
+    if not ONLINE:
+        return on_tap()
+    if code is None:
+        return say("No game running. Tap to start one.")
     with lock:
+        live = game.get("status") == "live"
+        final = list(players)
         try:
-            rpc("finish_game" if game.get("status") == "live" else "cancel_game", {"p_code": code})
+            rpc("finish_game" if live else "cancel_game", {"p_code": code})
         except Exception as e:
             print("end failed:", e)
         reset()
-    note("Game over!", "Check your phone", lcd.WHITE, 8)
-    say("Game over. Check your phones for results.")
+    if live:
+        note("Game over!", "Tap = new game", lcd.WHITE, 8)
+        say(f"Game over. {winner_line(final)} Tap to start a new game.")
+    else:
+        note("Game closed", "Tap = new game", lcd.WHITE, 8)
+        say("Game closed. Tap to start a new game.")
+
+
+def winner_line(final):
+    if not final:
+        return ""
+    fewest = min(p["pickups"] for p in final)
+    best = [p for p in final if p["pickups"] == fewest]
+    n = "zero" if fewest == 0 else str(fewest)
+    picks = "pickup" if fewest == 1 else "pickups"
+    if len(best) == len(final):
+        return f"Everyone tied with {n} {picks}."
+    if len(best) == 1:
+        return f"{name(best[0])} wins with {n} {picks}."
+    return f"{names(best)} tie for the win with {n} {picks}."
 
 
 def reset():
@@ -376,22 +400,22 @@ if __name__ == "__main__":
 
     touch = Button(TOUCH_PIN, pull_up=None, active_state=True, hold_time=3)
     held = [False]
-    pending = [None]          # a tap waiting to see if a second one follows
+    taps = [0, None]          # taps so far, and the timer that decides once they stop
+
+    def counted():
+        n, taps[0] = taps[0], 0
+        (on_tap if n == 1 else on_double if n == 2 else end_game)()
 
     def released():
         if held[0]:
             return
-        if code is not None and game.get("status") == "live":   # double tap only matters before the game starts
-            return on_tap()
-        if pending[0] and pending[0].is_alive():
-            pending[0].cancel()
-            pending[0] = None
-            on_double()
-        else:
-            pending[0] = threading.Timer(0.4, on_tap)
-            pending[0].start()
+        taps[0] += 1
+        if taps[1]:
+            taps[1].cancel()
+        taps[1] = threading.Timer(0.45, counted)     # wait a moment to see if another tap follows
+        taps[1].start()
 
     touch.when_pressed = lambda: held.__setitem__(0, False)
-    touch.when_held = lambda: (held.__setitem__(0, True), on_hold())
+    touch.when_held = lambda: (held.__setitem__(0, True), end_game())
     touch.when_released = released
     main_loop()

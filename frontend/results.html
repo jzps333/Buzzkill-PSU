@@ -94,6 +94,10 @@
     .dots i { width: 18px; height: 18px; border-radius: 6px; display: grid; place-items: center; font: 800 10px var(--font); font-style: normal; color: #fff; }
     .dots .W { background: var(--green); } .dots .L { background: var(--red); } .dots .T { background: #A39C8C; }
     .vs .badges { grid-column: 1 / -1; margin: 4px 0 0; }
+    .next { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 16px 18px; border-radius: 20px; background: var(--honey); }
+    .next p { margin: 0; font-weight: 800; }
+    .next span { display: block; font-size: 13px; font-weight: 600; color: #4A3D17; }
+    .next a { flex: none; display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 12px; background: var(--ink); color: #fff; font-weight: 800; text-decoration: none; }
     .team-win { margin-top: 14px; padding: 18px 22px; border-radius: 22px; background: var(--ink); color: #fff; text-align: center; }
     .team-win b { display: block; font-size: 24px; font-weight: 800; }
     .team-win span { font-size: 14px; color: #D8D0BE; }
@@ -123,6 +127,10 @@
       <p id="sub">Loading the results…</p>
     </section>
 
+    <div class="next" id="next" hidden role="status">
+      <p>🐝 Next game is ready<span id="nextSub"></span></p>
+      <a id="nextLink" href="/">Join</a>
+    </div>
     <div class="team-win" id="teamWin" hidden></div>
     <div class="list" id="list"></div>
 
@@ -301,6 +309,25 @@
     }
 
     load();
+
+    // ---------- Rematch: a new game on the same brick? Offer it here, so nobody types a PIN ----------
+    (async () => {
+      if (!room) return;
+      const { data: g } = await sb.from("games").select("speaker").eq("code", room).maybeSingle();
+      if (!g?.speaker) return;
+      async function check() {
+        const { data } = await sb.from("games").select("code, status").eq("speaker", g.speaker)
+          .eq("status", "waiting").neq("code", room).limit(1);
+        const next = data?.[0];
+        $("next").hidden = !next;
+        if (next) {
+          $("nextSub").textContent = `PIN ${next.code}. Tap Join and you're in the lobby.`;
+          $("nextLink").href = "/join?room=" + encodeURIComponent(next.code);
+        }
+      }
+      check();
+      setInterval(check, 4000);
+    })();
   </script>
   <script type="module" src="companion.js"></script>
 </body>
