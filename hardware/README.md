@@ -22,7 +22,7 @@ sb.rpc("start_game", {"p_code": code}).execute()
 sb.rpc("finish_game", {"p_code": code}).execute()
 ```
 
-**2. Listen for alarms → play sounds.** Subscribe to Realtime `UPDATE`s on the `results` table
+**2. Listen for alarms → play sounds.** This part is done: `speaker.py` (see "Bluetooth speaker" below). Subscribe to Realtime `UPDATE`s on the `results` table
 (filter `game=eq.CODE`). Each row has `user_id`, `alarm_on`, `is_shaking`, `pickups`, `shake_secs_needed`, `shake_secs_done`.
 
 **Play the roast on loop while `alarm_on` is true AND `is_shaking` is false.** Otherwise, stay silent.
@@ -38,7 +38,7 @@ for 2 seconds while `is_shaking` is still true (their phone died or lost signal)
 In **teams** mode, one pickup turns `alarm_on` on for every player on that team, so several rows can be busted at once.
 Play the sound while ANY player is busted and not shaking. `alarm_cause` says whose pickup it was (good for the roast: "Alex slipped!").
 
-**AI roasts (Gemini writes it, ElevenLabs says it).** When a new pickup happens, ask for a roast once,
+**AI roasts (Gemini writes it, ElevenLabs says it).** Done in `speaker.py`. When a new pickup happens, ask for a roast once,
 then loop that mp3 with the same rules as above. Teams: ask once, for the `alarm_cause` player.
 
 ```python
@@ -60,10 +60,56 @@ call `on_break(p_code)` to check, and say "Break time!" / "Break's over, phones 
 call `prune_lobby(p_code)` every ~8 seconds so players who closed their browser get removed
 (rows are deleted, so listen for Realtime `DELETE`s too if you show a player count).
 
+## Bluetooth speaker (speaker.py)
+
+The Pi reads the roasts out loud on a Bluetooth speaker, so the host's laptop doesn't have to.
+
+How it fits together:
+- `speaker.py` checks in with Supabase every 5 seconds (`speakers` table), so the host page shows **Buzzkill speaker** with a green dot.
+- When a host opens a game on `/host` and the speaker is online, the page sends that game's roasts to the Pi automatically
+  (`set_game_speaker`). The host can switch between **Buzzkill speaker**, **This laptop** and **Off** at any time.
+- The Pi only talks for the game that picked it. One game at a time: the last game to pick the speaker gets it.
+- If the Pi goes offline mid-game (no check-in for 20 s), the laptop takes over until it's back.
+
+### Setup (once, on the Pi)
+
+1. Run `backend/speaker.sql` in the Supabase SQL Editor (once for the project).
+2. Install the voice and get the code:
+   ```bash
+   sudo apt install -y espeak-ng mpg123 python3-requests
+   git clone https://github.com/jzps333/Buzzkill-PSU ~/Buzzkill-PSU
+   cd ~/Buzzkill-PSU/hardware && cp .env.example .env   # then paste the secret key into .env
+   ```
+3. Pair the speaker (put it in pairing mode first):
+   ```bash
+   bluetoothctl
+     scan on              # wait for your speaker to show up, copy its address (AA:BB:CC:DD:EE:FF)
+     pair AA:BB:CC:DD:EE:FF
+     trust AA:BB:CC:DD:EE:FF
+     connect AA:BB:CC:DD:EE:FF
+     exit
+   ```
+   Put that address in `.env` as `BT_SPEAKER_MAC` and the Pi reconnects to the speaker whenever it drops.
+4. Test it: `python3 speaker.py --test` should say a roast out of the speaker.
+   No sound? Run `wpctl status` and make sure the Bluetooth speaker is the default sink (`wpctl set-default <id>`).
+5. Start it on boot. It runs as your user (not root) so it can reach the Bluetooth audio:
+   ```bash
+   mkdir -p ~/.config/systemd/user
+   cp ~/Buzzkill-PSU/hardware/buzzkill-speaker.service ~/.config/systemd/user/
+   systemctl --user daemon-reload
+   systemctl --user enable --now buzzkill-speaker
+   sudo loginctl enable-linger $USER      # keep it running without anyone logged in
+   journalctl --user -u buzzkill-speaker -f   # watch the logs
+   ```
+
+It plays the same AI roasts as the host page (one per pickup; in teams, one per slip for the whole team).
+If the roast function is down or out of credits, it reads the text with espeak-ng, or uses a built-in roast.
+Set `AI_ROASTS=0` in `.env` to skip the AI and save credits.
+
 ## Backup
 
 If the brick isn't working, anyone logged in can run a game from `https://www.buzzkill.study/host`.
-It can also play the roasts out loud from the laptop.
+It plays the roasts out loud on the Bluetooth speaker if the Pi is online, or from the laptop if not.
 
 ## Wiring (Pi 4B, 3.3V only)
 
@@ -71,4 +117,4 @@ It can also play the roasts out loud from the laptop.
 |---|---|---|
 | ST25DV64K NFC | VCC / GND / SDA / SCL | 1 / 6 / 3 / 5 |
 | Touch sensor (TTP223) | VCC / GND / SIG | 17 / 9 / 11 (GPIO 17) |
-| Speaker | 3.5 mm jack or USB | |
+| Speaker | Bluetooth (see above), or 3.5 mm jack / USB | |

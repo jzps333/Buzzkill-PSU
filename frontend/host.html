@@ -100,16 +100,17 @@
     .chip.shaking { background: #FCEFD2; color: var(--amber); }
     li.empty { justify-content: center; background: transparent; border: 2px dashed var(--line); color: var(--ink-2); font-weight: 600; }
 
-    /* Roast voice switch */
-    .switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 16px 18px; border-radius: 18px; background: var(--sand); cursor: pointer; }
-    .switch b { display: block; font-size: 15px; }
-    .switch span { font-size: 13px; color: var(--ink-2); }
-    .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-    .track { flex: none; position: relative; width: 48px; height: 28px; border-radius: 999px; background: #D9D1BC; transition: background .2s; }
-    .track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--white); transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
-    .switch input:checked + .track { background: var(--ink); }
-    .switch input:checked + .track::after { transform: translateX(20px); }
-    .switch input:focus-visible + .track { outline: 3px solid var(--ink); outline-offset: 3px; }
+    /* Where roasts play: Pi speaker / laptop / off */
+    .seg { display: grid; grid-template-columns: 1.4fr 1fr .7fr; gap: 4px; margin-top: 14px; padding: 4px; border-radius: 999px; background: var(--sand); }
+    .seg label { position: relative; cursor: pointer; }
+    .seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .seg label > span { display: flex; align-items: center; justify-content: center; gap: 7px; height: 42px; padding: 0 10px; border-radius: 999px; font-size: 14px; font-weight: 800; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .seg input:checked + span { background: var(--ink); color: var(--white); }
+    .seg input:focus-visible + span { outline: 3px solid var(--ink); outline-offset: 2px; }
+    .seg input:disabled + span { opacity: .45; cursor: not-allowed; }
+    .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #9C958A; }
+    .dot.on { background: #3CC274; }
+    @media (max-width: 400px) { .seg label > span { font-size: 13px; padding: 0 6px; } }
 
     #msg { min-height: 1.4em; margin: 14px 0 0; text-align: center; font-size: 14px; font-weight: 700; color: var(--red); }
     .msg-card { display: grid; justify-items: center; gap: 14px; margin-top: 14px; padding: 20px; border-radius: 18px; background: var(--peach); font-weight: 700; text-align: center; }
@@ -193,14 +194,15 @@
         <button class="btn ghost" id="closeBtn" hidden>Close game</button>
       </section>
 
-      <label class="switch">
-        <div>
-          <b>Read roasts out loud</b>
-          <span>AI roasts from this device whenever someone gets busted.</span>
+      <section class="card">
+        <h2>Where roasts play</h2>
+        <p class="sub" id="speakerNote">AI roasts read out loud whenever someone gets busted.</p>
+        <div class="seg" role="radiogroup" aria-label="Where roasts play">
+          <label><input type="radio" name="out" value="speaker" id="outSpeaker"><span><i class="dot" id="speakerDot"></i><span id="speakerName">Buzzkill speaker</span></span></label>
+          <label><input type="radio" name="out" value="laptop"><span>This laptop</span></label>
+          <label><input type="radio" name="out" value="off" checked><span>Off</span></label>
         </div>
-        <input type="checkbox" id="voice">
-        <span class="track" aria-hidden="true"></span>
-      </label>
+      </section>
     </div>
 
     <p id="msg" role="status"></p>
@@ -278,8 +280,16 @@
       sb.channel("host-" + code)
         .on("postgres_changes", { event: "*", schema: "public", table: "results", filter: `game=eq.${code}` }, loadPlayers)
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "games", filter: `code=eq.${code}` },
-            p => { game = p.new; setStatus(p.new.status); })
+            p => { game = p.new; setStatus(p.new.status); gameSpeaker = p.new.speaker ?? null; renderSpeaker(); })
         .subscribe();
+
+      // Already sent to the speaker (e.g. after a refresh)? Otherwise use it if it's online.
+      sb.from("games").select("speaker").eq("code", code).single().then(({ data }) => {
+        gameSpeaker = data?.speaker ?? null;
+        if (gameSpeaker) { picked = true; setOutput("speaker"); }
+        autoPickSpeaker();
+        renderSpeaker();
+      });
     }
 
     function setStatus(s) {
@@ -454,7 +464,7 @@
       if (!code) return;
       renderPlayers();
       const loud = players.filter(soundOn);
-      if (!loud.length || !$("voice").checked) { stopTalking(); return; }
+      if (!loud.length || !laptopTalks()) { stopTalking(); return; }
 
       // The person we're roasting started shaking (or is done)? Stop right away.
       if (playingFor && !loud.some(p => p.user_id === playingFor)) stopTalking();
@@ -480,6 +490,69 @@
       speechSynthesis.cancel();
       speechSynthesis.speak(new SpeechSynthesisUtterance(text));
     }
+
+    // ---------- Where roasts play: the Pi's Bluetooth speaker (hardware/speaker.py), this laptop, or off ----------
+    // The Pi checks in every 5 seconds. Picking it sets games.speaker, and the Pi only talks for that game.
+    let speaker = null;        // { id, name, online }
+    let gameSpeaker = null;    // the speaker this game picked (games.speaker)
+    let picked = false;        // the host chose themselves, so stop auto-picking
+
+    const output = () => document.querySelector("input[name=out]:checked").value;
+    const setOutput = v => { document.querySelector(`input[name=out][value=${v}]`).checked = true; };
+    const speakerWorking = () => !!speaker?.online && gameSpeaker === speaker.id;
+
+    // The laptop talks if you picked it, or as a backup while the speaker you picked is offline or busy
+    function laptopTalks() {
+      const o = output();
+      return o === "laptop" || (o === "speaker" && !speakerWorking());
+    }
+
+    async function loadSpeaker() {
+      const { data } = await sb.from("speakers").select("id, name, last_seen")
+        .order("last_seen", { ascending: false }).limit(1);
+      const s = data?.[0];
+      speaker = s ? { id: s.id, name: s.name, online: Date.now() - new Date(s.last_seen) < 20000 } : null;
+      autoPickSpeaker();
+      renderSpeaker();
+    }
+    setInterval(loadSpeaker, 5000);
+
+    async function useSpeaker(id) {
+      const { error } = await sb.rpc("set_game_speaker", { p_code: code, p_speaker: id });
+      if (error) { $("msg").textContent = error.message; return; }
+      gameSpeaker = id;
+      renderSpeaker();
+    }
+
+    // Speaker online and the host hasn't chosen yet? Send this game's roasts to it.
+    function autoPickSpeaker() {
+      if (picked || !code || !speaker?.online || ["ended", "cancelled"].includes(status)) return;
+      picked = true;
+      setOutput("speaker");
+      useSpeaker(speaker.id);
+    }
+
+    // "click" (not "change") so tapping the speaker again retries if another game took it
+    document.querySelectorAll("input[name=out]").forEach(r => r.onclick = () => {
+      picked = true;
+      const want = output() === "speaker" ? speaker?.id ?? null : null;
+      if (code && (want !== gameSpeaker || (want && !speakerWorking()))) useSpeaker(want);
+      renderSpeaker();
+    });
+
+    function renderSpeaker() {
+      const o = output(), name = speaker?.name || "Buzzkill speaker";
+      $("speakerName").textContent = name;
+      $("speakerDot").classList.toggle("on", !!speaker?.online);
+      $("outSpeaker").disabled = !speaker?.online && o !== "speaker";
+      $("speakerNote").textContent =
+        o === "off"         ? "Off. Nobody gets read out." :
+        o === "laptop"      ? "Plays from this laptop whenever someone gets busted." :
+        speakerWorking()    ? `Plays from the ${name} (Bluetooth) whenever someone gets busted.` :
+        !speaker?.online    ? "The speaker is offline, so this laptop is reading roasts for now." :
+                              "Another game took the speaker, so this laptop is reading roasts. Tap the speaker to take it back.";
+    }
+    loadSpeaker();
 
     // ---------- 4. Start (4+ players only; the database also refuses fewer) ----------
     $("startBtn").onclick = async () => {
