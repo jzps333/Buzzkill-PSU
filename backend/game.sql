@@ -126,12 +126,12 @@ begin
     insert into public.results (game, user_id) values (new.game, new.user_id)
     on conflict do nothing;
 
-  -- PICKUP: +1, alarm on. Each pickup adds 30 seconds of shaking: 30s, 60s, 90s, ...
+  -- PICKUP: +1, alarm on. 10 seconds of shaking turns it off.
   elsif new.type in ('pickup', 'left_page') and g = 'live' then
     update public.results set
       pickups           = pickups + 1,
       alarm_on          = true,
-      shake_secs_needed = 30 * (pickups + 1),
+      shake_secs_needed = 10,
       shake_secs_done   = 0,
       is_shaking        = false,
       last_shake_at     = null,

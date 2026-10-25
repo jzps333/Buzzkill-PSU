@@ -37,7 +37,7 @@ Supabase handles logins and the database. There's no server code to run for this
 The database is the referee. Phones only send events; a trigger does the rest:
 
 - `join` (game waiting) → adds the player to `results`
-- `pickup` / `left_page` (game live) → +1 pickup, `alarm_on = true`, shaking time needed = 30s × pickups (30s, 60s, 90s…)
+- `pickup` / `left_page` (game live) → +1 pickup, `alarm_on = true`, 10 seconds of shaking needed (run `shake_10s.sql` on the live database)
 - `shake` → phones send this ~2×/second while shaking; it adds up shaking time and sets `is_shaking = true` (sound paused). Enough time = alarm off
 - `shake_stop` → phone stopped shaking early: `is_shaking = false`, sound comes back
 - `create_game()`, `start_game(code)`, `finish_game(code)` run games. `start_game` refuses to start with fewer than 4 players, for everyone. Only the Pi (secret key) or the person who created the game can call them. `finish_game` also calculates payouts.
