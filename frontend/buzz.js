@@ -11,6 +11,7 @@
 */
 (function () {
   const INK = "#2B2118";
+  const HERE = document.currentScript ? document.currentScript.src : location.href;   // to find bee3d.js next to this file
 
   const SVG = `
 <svg class="bz-svg" viewBox="0 0 210 215" role="img" aria-label="Buzz the bee">
@@ -93,6 +94,8 @@
   const CSS = `
 .bz-bee { display: inline-block; will-change: transform; }
 .bz-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.bz-canvas { display: block; }
+.bz-3d .bz-svg { display: none; }
 .bz-bee .bz-worried { display: none; }
 .bz-bee.bz-mood-worried .bz-happy { display: none; }
 .bz-bee.bz-mood-worried .bz-worried { display: inline; }
@@ -119,9 +122,32 @@
   document.head.append(style);
 
   function bee(el, mood = "happy") {
+    if (el._bz3d) { el._bz3d.dispose(); el._bz3d = null; el.classList.remove("bz-3d"); }
     el.classList.add("bz-bee");
     el.innerHTML = SVG;
     setMood(el, mood);
+    upgrade(el);
+  }
+
+  // Swap the flat SVG for the 3D Buzz (bee3d.js + three.js) once it has loaded. No WebGL = the SVG stays.
+  // ?bee=2d in the address keeps the flat one (handy for comparing).
+  let loading = null;
+  function upgrade(el) {
+    if (new URLSearchParams(location.search).get("bee") === "2d" || !hasWebGL()) return;
+    loading ??= import(new URL("bee3d.js", HERE).href);
+    loading.then(m => {
+      if (!el.isConnected || el._bz3d) return;
+      el._bz3d = m.mount(el);
+      el.classList.add("bz-3d");
+    }).catch(e => console.warn("3D bee not available, using the flat one:", e));
+  }
+
+  let webgl;
+  function hasWebGL() {
+    if (webgl === undefined) {
+      try { webgl = !!document.createElement("canvas").getContext("webgl2"); } catch { webgl = false; }
+    }
+    return webgl;
   }
 
   function setMood(el, mood) {
