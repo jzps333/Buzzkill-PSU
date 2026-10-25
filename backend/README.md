@@ -5,7 +5,7 @@ Supabase handles logins and the database. There's no server code to run for this
 ## Setup (once)
 
 1. Make a project at supabase.com.
-2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same with `events.sql`, then `security.sql`. (All three are already done for the buzzkill project.)
+2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same, in order, with `events.sql`, `security.sql`, `game.sql`. (All are already done for the buzzkill project.)
 3. **Authentication → Sign In / Providers**:
    - Turn **on** "Allow anonymous sign-ins" (this is how guests work).
    - Turn **off** "Confirm email" (so signups work instantly at the hackathon).
@@ -22,6 +22,8 @@ Supabase handles logins and the database. There's no server code to run for this
 | `results` | One row per person per game: pickups, SOL in, SOL back |
 | `events` | Every join, pickup and shake from a phone. The Pi listens to it live. |
 | `leaderboard` (view) | Stats calculated from `results`, most focused first |
+| `game_awards` (view) | Titles per game: Iron Will, Doomscroller, First to Fold |
+| `rivalries` (view) | Your wins/losses vs. every other player. Nemesis = most losses |
 
 ## Stats
 
@@ -30,39 +32,21 @@ Supabase handles logins and the database. There's no server code to run for this
 - **pickups_per_hour** = total pickups ÷ hours played. Lower = more focused. This is the ranking.
 - **clean_pct** = % of games with 0 pickups (tiebreaker)
 
-## For the Pi / game code
+## Game rules (game.sql)
 
-The Pi writes to `games` and `results` using the **service_role (secret) key**.
-Keep that key on the Pi only. Never put it in the website or in git.
+The database is the referee. Phones only send events; a trigger does the rest:
 
-```python
-from datetime import datetime, timezone
-from supabase import create_client          # pip install supabase
-sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+- `join` (game waiting) → adds the player to `results`
+- `pickup` / `left_page` (game live) → +1 pickup, `alarm_on = true`, shakes needed = 3, 6, 9, 12, then 15
+- `shake` → counts toward turning the alarm off (spam-limited)
+- `create_game()`, `start_game(code)`, `finish_game(code)` run games. Only the Pi (secret key) or the person who created the game can call them. `finish_game` also calculates payouts.
 
-# New game
-sb.table("games").insert({"code": "ABC123"}).execute()
+See `hardware/README.md` for what the Pi does.
 
-# Player joins (user_id comes from their login)
-sb.table("results").insert({"game": "ABC123", "user_id": user_id}).execute()
-
-# Game starts / ends
-sb.table("games").update({"status": "live", "start_time": datetime.now(timezone.utc).isoformat()}).eq("code", "ABC123").execute()
-sb.table("games").update({"status": "ended", "end_time": datetime.now(timezone.utc).isoformat()}).eq("code", "ABC123").execute()
-
-# Pickup (+1)
-row = sb.table("results").select("pickups").eq("game", "ABC123").eq("user_id", user_id).single().execute()
-sb.table("results").update({"pickups": row.data["pickups"] + 1}).eq("game", "ABC123").eq("user_id", user_id).execute()
-
-# Payout at the end
-sb.table("results").update({"sol_back": 0.14}).eq("game", "ABC123").eq("user_id", user_id).execute()
-```
-
-To know who a phone belongs to, the phone sends its login token, and the Pi checks it:
-
-```python
-user = sb.auth.get_user(token).user   # token from the phone: (await sb.auth.getSession()).data.session.access_token
-user_id = user.id
+**Nemesis query** (for the profile page):
+```js
+sb.from("rivalries").select("*").eq("user_id", myId).gt("losses", 0)
+  .order("losses", { ascending: false }).limit(1)
 ```
 
 ## Google sign-in

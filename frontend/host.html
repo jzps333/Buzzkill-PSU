@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzkill · Host</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #111; color: #eee; max-width: 520px; margin: 0 auto; padding: 32px 16px; }
+    h1 { margin-bottom: 4px; }
+    .muted { color: #888; }
+    #code { font-size: 48px; font-weight: 800; letter-spacing: 6px; margin: 16px 0 4px; }
+    #link { word-break: break-all; color: #f5c542; }
+    button { width: 100%; padding: 14px; margin-top: 12px; border: 0; border-radius: 10px; background: #f5c542; color: #111; font-size: 17px; font-weight: 700; }
+    button.ghost { background: #222; color: #eee; }
+    button.danger { background: #ff5c5c; color: #111; }
+    ul { list-style: none; padding: 0; margin: 20px 0 0; }
+    li { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #2a2a2a; }
+    label { display: flex; gap: 8px; align-items: center; margin-top: 16px; color: #aaa; }
+    #msg { color: #ff7a7a; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Host a game</h1>
+  <p class="muted">Backup controls in case the brick isn't working.</p>
+
+  <div id="setup">
+    <button id="newGame">New game</button>
+  </div>
+
+  <div id="game" hidden>
+    <div id="status" class="muted"></div>
+    <div id="code"></div>
+    <div class="muted">Players open: <span id="link"></span></div>
+
+    <ul id="players"></ul>
+
+    <button id="startBtn">Start game</button>
+    <button id="endBtn" class="danger" hidden>End game</button>
+    <button id="resultsBtn" class="ghost" hidden>See results</button>
+    <label><input type="checkbox" id="voice"> Play roasts out loud from this device</label>
+  </div>
+
+  <p id="msg"></p>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="config.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const ROASTS = [
+      n => `${n} picked up their phone. Your future self is disappointed.`,
+      n => `Attention everyone. ${n} could not last. Shake it off, ${n}.`,
+      n => `${n} is doomscrolling again. Put it down.`,
+      n => `Wow ${n}. That notification was not important.`,
+    ];
+
+    let code = null, status = null, players = [], confirmStart = false;
+    const roasting = new Set();       // people whose alarm is on
+
+    // ---------- 1. Must be logged in, not as a guest ----------
+    async function init() {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) { location.href = "login?next=/host"; return; }
+      const { data: me } = await sb.from("profiles").select("is_guest").eq("id", session.user.id).single();
+      if (me?.is_guest) { $("msg").textContent = "Guests can't host. Make an account first."; $("setup").hidden = true; return; }
+
+      // Pick up where you left off if you already have a game open
+      const { data: open } = await sb.from("games").select("code, status")
+        .eq("host_id", session.user.id).in("status", ["waiting", "live"])
+        .order("code").limit(1).maybeSingle();
+      if (open) openGame(open.code, open.status);
+    }
+
+    // ---------- 2. New game ----------
+    $("newGame").onclick = async () => {
+      const { data, error } = await sb.rpc("create_game");
+      if (error) { $("msg").textContent = error.message; return; }
+      openGame(data, "waiting");
+    };
+
+    function openGame(c, s) {
+      code = c;
+      $("setup").hidden = true;
+      $("game").hidden = false;
+      $("code").textContent = code;
+      $("link").textContent = `${location.host}/join?room=${code}`;
+      setStatus(s);
+      loadPlayers();
+
+      // Live updates: players joining, pickups, alarms
+      sb.channel("host-" + code)
+        .on("postgres_changes", { event: "*", schema: "public", table: "results", filter: `game=eq.${code}` }, loadPlayers)
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "games", filter: `code=eq.${code}` },
+            p => setStatus(p.new.status))
+        .subscribe();
+    }
+
+    function setStatus(s) {
+      status = s;
+      $("status").textContent = { waiting: "Waiting for players", live: "🔴 Game is live", ended: "Game over" }[s];
+      $("startBtn").hidden = s !== "waiting";
+      $("endBtn").hidden = s !== "live";
+      $("resultsBtn").hidden = s !== "ended";
+    }
+
+    // ---------- 3. Player list (names are set with textContent, so they can't run code) ----------
+    async function loadPlayers() {
+      const { data } = await sb.from("results")
+        .select("user_id, pickups, alarm_on, shakes_needed, shakes_done, profiles(username)")
+        .eq("game", code);
+      players = data || [];
+
+      const ul = $("players");
+      ul.replaceChildren(...players.map(p => {
+        const li = document.createElement("li");
+        const name = document.createElement("span");
+        const info = document.createElement("span");
+        name.textContent = p.profiles?.username ?? "player";
+        info.textContent = p.alarm_on
+          ? `🚨 ${p.shakes_needed - p.shakes_done} shakes left`
+          : `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`;
+        li.append(name, info);
+        return li;
+      }));
+      if (!players.length) ul.innerHTML = '<li class="muted">Nobody yet</li>';
+
+      // Speak a roast when someone's alarm turns on
+      for (const p of players) {
+        if (p.alarm_on && !roasting.has(p.user_id)) {
+          roasting.add(p.user_id);
+          if ($("voice").checked) speak(ROASTS[Math.floor(Math.random() * ROASTS.length)](p.profiles?.username ?? "Someone"));
+        }
+        if (!p.alarm_on) roasting.delete(p.user_id);
+      }
+      if (!roasting.size) speechSynthesis.cancel();
+      confirmStart = false;
+      $("startBtn").textContent = "Start game";
+    }
+
+    function speak(text) {
+      speechSynthesis.cancel();
+      speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+    }
+
+    // ---------- 4. Start (asks twice if fewer than 4 players) ----------
+    $("startBtn").onclick = async () => {
+      if (players.length < 4 && !confirmStart) {
+        confirmStart = true;
+        $("startBtn").textContent = `Only ${players.length} player${players.length === 1 ? "" : "s"}. Tap again to start anyway`;
+        return;
+      }
+      const { error } = await sb.rpc("start_game", { p_code: code });
+      if (error) $("msg").textContent = error.message; else setStatus("live");
+    };
+
+    // ---------- 5. End + pay out ----------
+    $("endBtn").onclick = async () => {
+      const { error } = await sb.rpc("finish_game", { p_code: code });
+      if (error) { $("msg").textContent = error.message; return; }
+      speechSynthesis.cancel();
+      setStatus("ended");
+    };
+
+    $("resultsBtn").onclick = () => location.href = "results?room=" + code;
+
+    init();
+  </script>
+</body>
+</html>

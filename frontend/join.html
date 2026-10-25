@@ -69,11 +69,15 @@
       setStatus(game.status);
       $("start").hidden = false;
 
-      // Watch the game live: waiting → live → ended
+      // Watch live: the game (waiting → live → ended) and MY alarm (on/off, shakes left)
+      const me = session.user.id;
       sb.channel("game-" + room)
         .on("postgres_changes",
             { event: "UPDATE", schema: "public", table: "games", filter: `code=eq.${room}` },
             p => setStatus(p.new.status))
+        .on("postgres_changes",
+            { event: "UPDATE", schema: "public", table: "results", filter: `game=eq.${room}` },
+            p => { if (p.new.user_id === me) setAlarm(p.new); })
         .subscribe();
     }
 
@@ -81,7 +85,19 @@
       gameStatus = s;
       if (s === "waiting") show("⏳", "You're in!", "Waiting for 4+ players. Then tap the brick to start.");
       if (s === "live")    show("📵", "Game on", "Phone face down. Don't touch it.");
-      if (s === "ended")   { show("🏁", "Game over", "Check the leaderboard."); stopMotion(); setTimeout(() => location.href = "leaderboard", 3000); }
+      if (s === "ended")   { show("🏁", "Game over", "Loading results…"); stopMotion(); setTimeout(() => location.href = "results?room=" + room, 2000); }
+    }
+
+    // The database decides when your alarm is on and how many shakes you need
+    let alarmOn = false;
+    function setAlarm(r) {
+      alarmOn = r.alarm_on && gameStatus === "live";
+      if (alarmOn) {
+        const left = r.shakes_needed - r.shakes_done;
+        show("🚨", "BUSTED", `Shake it! ${left} more shake${left === 1 ? "" : "s"} to shut it up.`);
+      } else if (gameStatus === "live") {
+        show("😮‍💨", "Alarm off", `Pickup #${r.pickups} counted. Put it back face down.`);
+      }
     }
 
     // ---------- 3. "I'm ready" button: permissions ----------
@@ -124,17 +140,19 @@
         }
       } else if (!isDown && sim > 0.95) {                 // back flat
         isDown = true;
-        if (gameStatus === "live") show("📵", "Game on", "Phone face down. Don't touch it.");
+        if (gameStatus === "live" && !alarmOn) show("📵", "Game on", "Phone face down. Don't touch it.");
       }
 
-      // 4c. Shake: 3 hard jolts within 1 second
+      // 4c. Shake: every hard jolt counts as 1 shake while your alarm is on.
+      //     You need 3 shakes for your 1st pickup, 6 for the 2nd, 9, 12, then 15 max.
       const a = e.acceleration;
       const strength = (a && a.x !== null) ? Math.hypot(a.x, a.y, a.z) : Math.abs(Math.hypot(...v) - 9.8);
-      if (strength > 18) {
+      if (strength > 18 && alarmOn) {
         const now = Date.now();
-        shakeTimes = shakeTimes.filter(t => now - t < 1000);
-        shakeTimes.push(now);
-        if (shakeTimes.length >= 3) { shakeTimes = []; send("shake"); }
+        if (now - (shakeTimes[0] || 0) > 200) {           // one jolt = one shake, not 10
+          shakeTimes = [now];
+          send("shake");
+        }
       }
 
       $("debug").textContent = `sim ${sim.toFixed(2)} · force ${strength.toFixed(1)}`;

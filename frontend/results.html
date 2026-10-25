@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzkill · Results</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #111; color: #eee; max-width: 520px; margin: 0 auto; padding: 32px 16px; }
+    .muted { color: #888; }
+    .card { background: #1b1b1b; border-radius: 12px; padding: 14px 16px; margin-top: 12px; }
+    .row { display: flex; justify-content: space-between; align-items: baseline; }
+    .name { font-weight: 700; font-size: 18px; }
+    .titles { margin-top: 6px; color: #f5c542; }
+    .up { color: #6fdc8c; } .down { color: #ff7a7a; }
+    a { color: #f5c542; }
+  </style>
+</head>
+<body>
+  <h1>Results</h1>
+  <p class="muted" id="sub">Loading…</p>
+  <div id="list"></div>
+  <p><a href="leaderboard">All-time leaderboard →</a></p>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="config.js"></script>
+  <script>
+    const raw = new URLSearchParams(location.search).get("room") || "";
+    const room = /^[A-Za-z0-9]{4,12}$/.test(raw) ? raw.toUpperCase() : null;
+
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+    async function load() {
+      if (!room) { document.getElementById("sub").textContent = "No game picked."; return; }
+      const { data, error } = await sb.from("game_awards").select("*").eq("game", room).order("pickups");
+      const sub = document.getElementById("sub");
+      if (error || !data?.length) { sub.textContent = "No results for this game yet."; return; }
+      sub.textContent = `Game ${room} · ${data.length} players`;
+
+      document.getElementById("list").replaceChildren(...data.map((p, i) => {
+        const card = el("div", "card");
+        const row = el("div", "row");
+        row.append(el("span", "name", `${i + 1}. ${p.username}`), el("span", "muted", `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`));
+        card.append(row);
+
+        const titles = [
+          p.iron_will && "🏆 Iron Will",
+          p.doomscroller && "📱 Doomscroller",
+          p.first_to_fold && "🫠 First to Fold",
+        ].filter(Boolean);
+        if (titles.length) card.append(el("div", "titles", titles.join("  ·  ")));
+
+        if (Number(p.sol_in) > 0) {
+          const net = Number(p.sol_back) - Number(p.sol_in);
+          card.append(el("div", net >= 0 ? "up" : "down", `${net >= 0 ? "+" : ""}${net.toFixed(3)} SOL`));
+        }
+        return card;
+      }));
+    }
+
+    load();
+  </script>
+</body>
+</html>
