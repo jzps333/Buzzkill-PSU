@@ -155,7 +155,7 @@
         data.forEach(p => { if (p.team) tot[p.team] += p.pickups; });
         const name = { 1: "🍯 Team Honey", 2: "🐝 Team Stingers" };
         const head = tot[1] === tot[2] ? "🤝 It's a tie!" : `${name[tot[1] < tot[2] ? 1 : 2]} wins!`;
-        $("teamWin").replaceChildren(el("b", "", head), el("span", "", `Honey ${tot[1]} pickups · Stingers ${tot[2]} pickups`));
+        $("teamWin").replaceChildren(el("b", "", head), el("span", "", `${data.filter(p => p.team === 1).length}v${data.filter(p => p.team === 2).length} · Honey ${tot[1]} pickups · Stingers ${tot[2]} pickups`));
         $("teamWin").hidden = false;
         $("title").textContent = head;
       }
