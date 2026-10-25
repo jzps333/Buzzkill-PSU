@@ -86,6 +86,21 @@
     .team-tag { padding: 6px 12px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13px; }
     .pass-btn { width: 100%; height: 48px; margin-top: 14px; border: 2px solid #fff; border-radius: 14px; background: transparent; color: #fff; font: 800 15px var(--font); cursor: pointer; }
 
+    /* ---------- Ghost race vs your rival ---------- */
+    .race { margin-top: 14px; padding: 14px 14px 12px; border-radius: 18px; background: rgba(255,255,255,.6); text-align: left; }
+    .race-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; font-size: 14px; }
+    .race-head span { color: #5A4710; font-size: 12px; font-weight: 800; }
+    .lane { position: relative; height: 62px; margin: 2px 0; border-bottom: 2px dashed rgba(31,27,22,.25); }
+    .lane::after { content: "🏁"; position: absolute; right: -2px; bottom: 4px; font-size: 18px; }
+    .runner { position: absolute; bottom: 4px; left: calc(var(--p, 0) * (100% - 84px)); transition: left .6s cubic-bezier(.3, 1.4, .5, 1); display: flex; align-items: flex-end; gap: 4px; }
+    .runner.me b { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 11px; font-weight: 800; }
+    .runner.rival #rivalBee { width: 60px; }
+    .runner span { max-width: 80px; padding: 2px 7px; border-radius: 999px; background: #fff; font-size: 11px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .runner.back { animation: knock .5s; }
+    @keyframes knock { 30% { transform: translateX(-10px) rotate(-8deg); } }
+    .race-line { margin: 8px 0 0; font-size: 13px; color: #3E3420; }
+    @media (prefers-reduced-motion: reduce) { .runner { transition: none; } .runner.back { animation: none; } }
+
     @media (prefers-reduced-motion: reduce) { .busted { animation: none; box-shadow: inset 0 0 0 8px var(--red); } }
   </style>
 </head>
@@ -107,6 +122,12 @@
       <p id="hint"></p>
       <button class="main" id="start" hidden>I'm ready</button>
       <div class="phase" id="phase" hidden></div>
+      <div class="race" id="race" hidden aria-live="polite">
+        <div class="race-head"><b>👻 Ghost race <span id="raceVs"></span></b><span id="raceLap"></span></div>
+        <div class="lane"><div class="runner me" id="meRunner"><b>You</b></div></div>
+        <div class="lane"><div class="runner rival" id="rivalRunner"><div id="rivalBee"></div><span id="rivalName"></span></div></div>
+        <p class="race-line" id="raceLine"></p>
+      </div>
       <div class="vote" id="vote" hidden>
         <p>🍅 Vote: how should we study?</p>
         <div class="vote-grid">
@@ -213,7 +234,7 @@
             p => { game = p.new; setStatus(p.new.status); })
         .on("postgres_changes",
             { event: "*", schema: "public", table: "results", filter: `game=eq.${room}` },
-            p => { if (p.new?.user_id === me) setAlarm(p.new); loadTally(); })
+            p => { if (p.new?.user_id === me) setAlarm(p.new); loadTally(); raceUpdate(p.new); })
         .subscribe();
     }
 
@@ -223,7 +244,7 @@
       if (s === "waiting" && joined)  show("happy", "You're in!", "Waiting for 4+ players. Then tap the brick to start.");
       if (s === "live")    show("happy", "Phones down.", "Face down on the brick. Buzz is watching.");
       $("vote").hidden = !(s === "waiting" && joined);
-      if (s === "live") { loadMine(); tick(); }
+      if (s === "live") { loadMine(); tick(); loadRace(); }
       if (s === "ended")   { hideBusted(); show("happy", "Game over", "Loading results…"); stopMotion(); setTimeout(() => location.href = "results?room=" + room, 2000); }
       if (s === "cancelled") { hideBusted(); stopMotion(); $("start").hidden = true; show("worried", "Game closed", "The host closed this game. Enter a new PIN on buzzkill.study."); }
     }
@@ -287,6 +308,81 @@
       wasFree = freeNow;
     }
     setInterval(tick, 1000);
+
+    // ---------- Ghost race: you vs your rival, toward the end of this focus block ----------
+    // Both of you move forward with the clock. Every pickup knocks you back 8% of the track,
+    // so whoever picked up less is ahead. Your rival = your nemesis if they're here (the player
+    // you've lost to most), else the one you've played most, else a fixed pick. Teams: someone on the other team.
+    const STEP = 0.08;
+    let racers = {};           // user_id -> { pickups, alarm_on, team, name }
+    let rival = null, rivalBeeOn = false;
+
+    async function loadRace() {
+      const { data } = await sb.from("results").select("user_id, pickups, alarm_on, team, profiles(username)").eq("game", room);
+      for (const r of data || []) racers[r.user_id] = { ...r, name: r.profiles?.username ?? "player" };
+      if (!rival) rival = await pickRival();
+      if (rival && !rivalBeeOn) {
+        rivalBeeOn = true;
+        Buzz.bee($("rivalBee"));
+        $("rivalName").textContent = racers[rival].name;
+        $("raceVs").textContent = "vs " + racers[rival].name;
+      }
+      drawRace();
+    }
+
+    async function pickRival() {
+      let others = Object.keys(racers).filter(id => id !== me);
+      if (game.mode === "teams" && mine.team) {
+        const opp = others.filter(id => racers[id].team && racers[id].team !== mine.team);
+        if (opp.length) others = opp;
+      }
+      if (!others.length) return null;
+      const { data: rec } = await sb.from("rivalries").select("opponent_id, losses, games_together").eq("user_id", me);
+      const by = Object.fromEntries((rec || []).map(r => [r.opponent_id, r]));
+      others.sort((a, b) => (by[b]?.losses ?? -1) - (by[a]?.losses ?? -1)
+        || (by[b]?.games_together ?? 0) - (by[a]?.games_together ?? 0)
+        || (a < b ? -1 : 1));
+      return others[0];
+    }
+
+    function raceUpdate(row) {
+      if (!row?.user_id || gameStatus !== "live") return;
+      if (!racers[row.user_id]) { loadRace(); return; }
+      const before = racers[row.user_id].pickups;
+      Object.assign(racers[row.user_id], { pickups: row.pickups, alarm_on: row.alarm_on, team: row.team });
+      if (row.pickups > before) {                   // knocked back: a little stumble
+        const el = row.user_id === me ? $("meRunner") : row.user_id === rival ? $("rivalRunner") : null;
+        if (el) { el.classList.remove("back"); void el.offsetWidth; el.classList.add("back"); }
+      }
+      drawRace();
+    }
+
+    function drawRace() {
+      if (gameStatus !== "live" || !rival || !racers[rival] || !game.start_time) { $("race").hidden = true; return; }
+      $("race").hidden = false;
+      const t = (Date.now() - new Date(game.start_time)) / 1000;
+      const w = (game.pomo_work > 0 ? game.pomo_work : 25) * 60;
+      const c = game.pomo_work > 0 ? w + game.pomo_break * 60 : w;
+      const m = t % c, onBreak = m >= w, f = Math.min(1, m / w);
+      const mineP = racers[me]?.pickups ?? mine.pickups ?? 0, r = racers[rival], name = r.name;
+      const pos = n => Math.max(0, Math.min(1, f - n * STEP)).toFixed(3);
+      $("meRunner").style.setProperty("--p", pos(mineP));
+      $("rivalRunner").style.setProperty("--p", pos(r.pickups));
+      $("raceLap").textContent = `Lap ${Math.floor(t / c) + 1}`;
+
+      // The rival's bee: smug while they're ahead, worried when you're ahead, panicking while they're busted
+      const bee = $("rivalBee");
+      Buzz.setMood(bee, r.alarm_on || r.pickups > mineP ? "worried" : "happy");
+      bee.classList.toggle("bz-panic", !!r.alarm_on);
+
+      $("raceLine").textContent =
+        onBreak ? "☕ Break: the race is paused."
+        : r.alarm_on ? `${name} just slipped! Stay down and pull ahead.`
+        : r.pickups > mineP ? `You're ahead by ${r.pickups - mineP}. Keep it face down.`
+        : r.pickups < mineP ? `${name} is ahead by ${mineP - r.pickups}. Stay down to stop falling further behind.`
+        : "Neck and neck. Whoever picks up first falls back.";
+    }
+    setInterval(drawRace, 1000);
 
     // ---------- Lobby: stay "in" while waiting ----------
     // While the game hasn't started, check in every 8 seconds. If this page closes or goes quiet
