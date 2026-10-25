@@ -38,8 +38,10 @@
     .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; text-decoration: none; }
     .brand-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--honey); display: grid; place-items: center; }
     .nav-links { display: flex; align-items: center; gap: 22px; font-size: 14px; font-weight: 700; }
-    .nav-links a { text-decoration: none; }
-    .nav-links a:hover { text-decoration: underline; }
+    .nav-links a:not(.pill) { text-decoration: none; }
+    .nav-links a:not(.pill):hover { text-decoration: underline; }
+    .pill { display: inline-flex; align-items: center; height: 38px; padding: 0 16px; border-radius: 999px; background: var(--ink); color: var(--white); font-size: 14px; font-weight: 700; text-decoration: none; }
+    .pill:hover { background: #3A332A; }
 
     /* ---------- Card ---------- */
     main { padding: 12px 0 64px; }
@@ -128,7 +130,7 @@
     .below a { font-weight: 800; }
 
     @media (max-width: 560px) {
-      .nav-links a:not(:last-child) { display: none; }
+      .nav-links a:not(.pill) { display: none; }
       .hive { padding: 26px 16px 20px; border-radius: 24px; }
       .panel { padding: 16px; }
     }
@@ -146,7 +148,7 @@
       <div class="nav-links">
         <a href="/#how">How it works</a>
         <a href="/#leaderboard">Leaderboard</a>
-        <a href="/">Join a game</a>
+        <a class="pill" href="/">Join a game</a>
       </div>
     </nav>
   </div>
