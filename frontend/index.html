@@ -3,18 +3,41 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Buzzkill</title>
-  <style>body { background: #111; color: #eee; font-family: system-ui, sans-serif; text-align: center; padding-top: 30vh; }</style>
+  <title>Buzzkill · Put the phone down</title>
+  <meta name="description" content="A study app that calls you names when you pick up your phone. To turn it off, you have to shake it.">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #eee; line-height: 1.5; }
+    main { max-width: 640px; margin: 0 auto; padding: 14vh 20px 48px; text-align: center; }
+    h1 { font-size: clamp(3rem, 14vw, 5.5rem); margin: 0; letter-spacing: -0.03em; color: #f5c542; }
+    .tag { font-size: 1.25rem; color: #ccc; margin: 8px 0 32px; }
+    .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+    .btn { display: inline-block; padding: 14px 24px; border-radius: 10px; font-size: 1rem; font-weight: 600; text-decoration: none; }
+    .primary { background: #f5c542; color: #111; }
+    .secondary { background: #222; color: #eee; border: 1px solid #333; }
+    ol { list-style: none; padding: 0; margin: 56px 0 0; display: grid; gap: 12px; text-align: left; }
+    li { background: #1b1b1b; border: 1px solid #2a2a2a; border-radius: 12px; padding: 16px 18px; }
+    li b { color: #f5c542; }
+    footer { margin-top: 40px; color: #777; font-size: 0.85rem; }
+  </style>
 </head>
 <body>
-  <p>Loading…</p>
-  <script src="vendor/supabase.js"></script>
-  <script src="config.js"></script>
-  <script>
-    // Home page: logged in → leaderboard, not logged in → login page
-    sb.auth.getSession().then(({ data }) => {
-      location.replace(data.session ? "/leaderboard" : "/login");
-    });
-  </script>
+  <main>
+    <h1>Buzzkill</h1>
+    <p class="tag">Put the phone down. We're watching.</p>
+
+    <div class="cta">
+      <a class="btn primary" href="/login">Log in / Sign up</a>
+      <a class="btn secondary" href="/leaderboard">View the leaderboard</a>
+    </div>
+
+    <ol>
+      <li><b>1. Study.</b> Start a session and put your phone down.</li>
+      <li><b>2. Get caught.</b> Pick it up and Buzzkill calls you names.</li>
+      <li><b>3. Shake to stop.</b> The only way to turn it off is to shake it. Every slip costs you on the leaderboard.</li>
+    </ol>
+
+    <footer>Built for the Fall 2026 PSU hackathon.</footer>
+  </main>
 </body>
 </html>
