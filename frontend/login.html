@@ -4,64 +4,250 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Buzzkill · Log in</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    body { font-family: system-ui, sans-serif; background: #111; color: #eee; max-width: 420px; margin: 40px auto; padding: 0 16px; }
-    h1 { margin-bottom: 4px; }
-    .tabs button { background: #222; color: #aaa; border: 0; padding: 10px 14px; border-radius: 8px; margin-right: 6px; }
-    .tabs button.on { background: #f5c542; color: #111; font-weight: 600; }
-    form { display: none; margin-top: 16px; }
+    :root {
+      --cream: #FFFAEB;
+      --honey: #F5D35A;
+      --sand: #F4EEDC;
+      --ink: #1F1B16;
+      --ink-2: #5E574B;
+      --line: #EAE2CC;
+      --white: #FFFFFF;
+      --font: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100svh;
+      background: var(--cream);
+      color: var(--ink);
+      font: 500 16px/1.55 var(--font);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+
+    .wrap { width: min(1040px, 100% - 32px); margin: 0 auto; }
+
+    /* ---------- Nav (same as the landing page) ---------- */
+    .nav { display: flex; align-items: center; justify-content: space-between; height: 72px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; text-decoration: none; }
+    .brand-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--honey); display: grid; place-items: center; }
+    .nav-links { display: flex; align-items: center; gap: 22px; font-size: 14px; font-weight: 700; }
+    .nav-links a { text-decoration: none; }
+    .nav-links a:hover { text-decoration: underline; }
+
+    /* ---------- Card ---------- */
+    main { padding: 12px 0 64px; }
+    .hive {
+      width: min(480px, 100%);
+      margin: 0 auto;
+      padding: 32px 28px 28px;
+      border-radius: 28px;
+      background: var(--honey);
+    }
+    .head { text-align: center; margin-bottom: 22px; }
+    .head .bee { width: 84px; margin: 0 auto 6px; }
+    .head h1 { margin: 0 0 6px; font-size: clamp(30px, 6vw, 38px); line-height: 1.08; font-weight: 800; letter-spacing: -1px; }
+    .head p { margin: 0; font-size: 15px; color: #3E3420; }
+
+    .panel { padding: 20px; border-radius: 20px; background: var(--white); }
+
+    .google {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      height: 50px;
+      border: 2px solid var(--ink);
+      border-radius: 14px;
+      background: var(--white);
+      color: var(--ink);
+      font: 700 15px var(--font);
+      cursor: pointer;
+    }
+    .google:hover { background: #FBF8EF; }
+
+    .or { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--ink-2); font-size: 13px; font-weight: 700; }
+    .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+    .tabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 16px; border-radius: 999px; background: var(--sand); }
+    .tabs button {
+      flex: 1;
+      height: 38px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--ink-2);
+      font: 700 14px var(--font);
+      cursor: pointer;
+    }
+    .tabs button.on { background: var(--ink); color: var(--white); }
+
+    form { display: none; }
     form.on { display: block; }
-    input { width: 100%; box-sizing: border-box; padding: 12px; margin: 6px 0; border-radius: 8px; border: 1px solid #333; background: #1b1b1b; color: #eee; font-size: 16px; }
-    .go { width: 100%; padding: 12px; margin-top: 8px; border: 0; border-radius: 8px; background: #f5c542; color: #111; font-size: 16px; font-weight: 600; }
-    .google { width: 100%; padding: 12px; margin-top: 20px; border: 1px solid #444; border-radius: 8px; background: #fff; color: #222; font-size: 16px; font-weight: 600; }
-    .or { text-align: center; color: #666; margin: 16px 0 0; font-size: 14px; }
-    #msg { margin-top: 14px; color: #ff7a7a; }
+    label { display: block; margin: 0 0 6px; font-size: 13px; font-weight: 700; }
+    .field + .field { margin-top: 12px; }
+    input {
+      width: 100%;
+      height: 50px;
+      padding: 0 16px;
+      border: 2px solid var(--line);
+      border-radius: 12px;
+      background: var(--white);
+      color: var(--ink);
+      font: 600 16px var(--font);
+    }
+    input::placeholder { color: #A39C8C; }
+    input:focus { outline: none; border-color: var(--ink); }
+    .help { margin: 6px 0 0; font-size: 12px; color: var(--ink-2); }
+
+    .go {
+      width: 100%;
+      height: 50px;
+      margin-top: 18px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--ink);
+      color: var(--white);
+      font: 800 15px var(--font);
+      cursor: pointer;
+    }
+    .go:hover { background: #3A332A; }
+    .go:disabled { opacity: .6; cursor: wait; }
+
+    #msg { min-height: 1.4em; margin: 14px 0 0; text-align: center; font-size: 14px; font-weight: 700; color: #9B1C1C; }
+
+    .below { margin: 18px 0 0; text-align: center; font-size: 14px; color: #3E3420; }
+    .below a { font-weight: 800; }
+
+    @media (max-width: 560px) {
+      .nav-links a:not(:last-child) { display: none; }
+      .hive { padding: 26px 16px 20px; border-radius: 24px; }
+      .panel { padding: 16px; }
+    }
   </style>
 </head>
 <body>
-  <h1>Buzzkill</h1>
-  <p>Put the phone down. We're watching.</p>
-
-  <button id="google" class="google">Continue with Google</button>
-  <p class="or">or</p>
-
-  <div class="tabs">
-    <button data-tab="login" class="on">Log in</button>
-    <button data-tab="signup">Sign up</button>
-    <button data-tab="guest">Guest</button>
+  <div class="wrap">
+    <nav class="nav">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3c-3.6 0-6 2.7-6 6.3V14l-2 3h16l-2-3V9.3C18 5.7 15.6 3 12 3z" fill="#1F1B16"/><circle cx="12" cy="19.5" r="2.2" fill="#1F1B16"/></svg>
+        </span>
+        Buzzkill
+      </a>
+      <div class="nav-links">
+        <a href="/#how">How it works</a>
+        <a href="/#leaderboard">Leaderboard</a>
+        <a href="/">Join a game</a>
+      </div>
+    </nav>
   </div>
 
-  <form id="login" class="on">
-    <input name="email" type="email" placeholder="Email" autocomplete="email" required>
-    <input name="password" type="password" placeholder="Password" autocomplete="current-password" required>
-    <button class="go">Log in</button>
-  </form>
+  <main>
+    <div class="hive">
+      <div class="head">
+        <div class="bee" id="bee"></div>
+        <h1 id="title">Welcome back to the hive.</h1>
+        <p id="subtitle">Log in to keep your streak and climb the leaderboard.</p>
+      </div>
 
-  <form id="signup">
-    <input name="username" placeholder="Username (shown on leaderboard)" maxlength="30" pattern="[A-Za-z0-9_.\-]{3,30}"
-           title="3-30 letters, numbers, _ . -" autocomplete="username" required>
-    <input name="email" type="email" placeholder="Email" autocomplete="email" required>
-    <input name="password" type="password" placeholder="Password (8+ characters)" minlength="8" autocomplete="new-password" required>
-    <button class="go">Create account</button>
-  </form>
+      <div class="panel">
+        <button id="google" class="google" type="button">
+          <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/>
+            <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+            <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+            <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/>
+          </svg>
+          Continue with Google
+        </button>
 
-  <form id="guest">
-    <input name="username" placeholder="Your name" maxlength="30" required>
-    <button class="go">Play as guest</button>
-  </form>
+        <p class="or" id="orLine">or</p>
 
-  <p id="msg"></p>
+        <div class="tabs" role="tablist">
+          <button type="button" data-tab="login" class="on" role="tab" aria-selected="true">Log in</button>
+          <button type="button" data-tab="signup" role="tab" aria-selected="false">Sign up</button>
+          <button type="button" data-tab="guest" role="tab" aria-selected="false">Guest</button>
+        </div>
+
+        <form id="login" class="on">
+          <div class="field">
+            <label for="loginEmail">Email</label>
+            <input id="loginEmail" name="email" type="email" placeholder="you@psu.edu" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="loginPass">Password</label>
+            <input id="loginPass" name="password" type="password" placeholder="Your password" autocomplete="current-password" required>
+          </div>
+          <button class="go">Log in</button>
+        </form>
+
+        <form id="signup">
+          <div class="field">
+            <label for="suUser">Username</label>
+            <input id="suUser" name="username" placeholder="Shown on the leaderboard" maxlength="30" pattern="[A-Za-z0-9_.\-]{3,30}"
+                   title="3-30 letters, numbers, _ . -" autocomplete="username" required>
+            <p class="help">3 to 30 letters, numbers, _ . or -</p>
+          </div>
+          <div class="field">
+            <label for="suEmail">Email</label>
+            <input id="suEmail" name="email" type="email" placeholder="you@psu.edu" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="suPass">Password</label>
+            <input id="suPass" name="password" type="password" placeholder="8 or more characters" minlength="8" autocomplete="new-password" required>
+          </div>
+          <button class="go">Create account</button>
+        </form>
+
+        <form id="guest">
+          <div class="field">
+            <label for="guestName">Nickname</label>
+            <input id="guestName" name="username" placeholder="What should we call you?" maxlength="30" required>
+            <p class="help">Guests can play right away but don't show up on the leaderboard.</p>
+          </div>
+          <button class="go">Play as guest</button>
+        </form>
+
+        <p id="msg" role="status"></p>
+      </div>
+
+      <p class="below">Have a game PIN? <a href="/">Join from the home page</a></p>
+    </div>
+  </main>
 
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
+  <script src="buzz.js"></script>
   <script>
     const msg = document.getElementById("msg");
+    Buzz.bee(document.getElementById("bee"));
+    document.getElementById("bee").classList.add("bz-float");
+
+    // Heading changes with the tab
+    const HEADINGS = {
+      login:  ["Welcome back to the hive.", "Log in to keep your streak and climb the leaderboard."],
+      signup: ["Join the hive.", "Make an account so your focus counts on the leaderboard."],
+      guest:  ["Just here to play?", "Pick a nickname and jump into a game."],
+    };
 
     // Switch between the 3 forms
     document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
       document.querySelectorAll(".tabs button, form").forEach(x => x.classList.remove("on"));
+      document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", "false"));
       b.classList.add("on");
+      b.setAttribute("aria-selected", "true");
       document.getElementById(b.dataset.tab).classList.add("on");
+      const [t, s] = HEADINGS[b.dataset.tab];
+      document.getElementById("title").textContent = t;
+      document.getElementById("subtitle").textContent = s;
       msg.textContent = "";
     });
 
@@ -73,6 +259,14 @@
     }
     const done = () => location.href = nextPage();
 
+    // Disable the button while a request is running
+    async function busy(form, work) {
+      const btn = form.querySelector(".go");
+      btn.disabled = true;
+      msg.textContent = "";
+      try { await work(); } finally { btn.disabled = false; }
+    }
+
     // GOOGLE
     document.getElementById("google").onclick = async () => {
       const { error } = await sb.auth.signInWithOAuth({
@@ -83,44 +277,62 @@
     };
 
     // LOG IN
-    document.getElementById("login").onsubmit = async e => {
+    document.getElementById("login").onsubmit = e => {
       e.preventDefault();
-      const f = new FormData(e.target);
-      const { error } = await sb.auth.signInWithPassword({
-        email: f.get("email").trim(),
-        password: f.get("password"),
+      busy(e.target, async () => {
+        const f = new FormData(e.target);
+        const { error } = await sb.auth.signInWithPassword({
+          email: f.get("email").trim(),
+          password: f.get("password"),
+        });
+        error ? msg.textContent = "Wrong email or password." : done();
       });
-      error ? msg.textContent = "Wrong email or password." : done();
     };
 
     // SIGN UP (username goes into the profile automatically)
-    document.getElementById("signup").onsubmit = async e => {
+    document.getElementById("signup").onsubmit = e => {
       e.preventDefault();
-      const f = new FormData(e.target);
-      const username = f.get("username").trim();
+      busy(e.target, async () => {
+        const f = new FormData(e.target);
+        const username = f.get("username").trim();
 
-      // Check the username isn't taken first
-      const { data: taken } = await sb.from("profiles").select("id")
-        .ilike("username", username.replace(/[%_\\]/g, "\\$&")).eq("is_guest", false).limit(1);
-      if (taken?.length) { msg.textContent = "That username is taken."; return; }
+        // Check the username isn't taken first
+        const { data: taken } = await sb.from("profiles").select("id")
+          .ilike("username", username.replace(/[%_\\]/g, "\\$&")).eq("is_guest", false).limit(1);
+        if (taken?.length) { msg.textContent = "That username is taken. Try another one."; return; }
 
-      const { error } = await sb.auth.signUp({
-        email: f.get("email").trim(),
-        password: f.get("password"),
-        options: { data: { username } },
+        const { error } = await sb.auth.signUp({
+          email: f.get("email").trim(),
+          password: f.get("password"),
+          options: { data: { username } },
+        });
+        error ? msg.textContent = error.message : done();
       });
-      error ? msg.textContent = error.message : done();
     };
 
     // GUEST (no email or password)
-    document.getElementById("guest").onsubmit = async e => {
+    document.getElementById("guest").onsubmit = e => {
       e.preventDefault();
-      const f = new FormData(e.target);
-      const { error } = await sb.auth.signInAnonymously({
-        options: { data: { username: f.get("username").trim() } },
+      busy(e.target, async () => {
+        const f = new FormData(e.target);
+        const { error } = await sb.auth.signInAnonymously({
+          options: { data: { username: f.get("username").trim() } },
+        });
+        error ? msg.textContent = error.message : done();
       });
-      error ? msg.textContent = error.message : done();
     };
+
+    // Only show "Continue with Google" if Google sign-in is switched on in Supabase
+    // (Authentication → Sign In / Providers → Google). Otherwise the button would just fail.
+    fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_ANON_KEY } })
+      .then(r => r.json())
+      .then(s => {
+        if (!s.external || !s.external.google) {
+          document.getElementById("google").hidden = true;
+          document.getElementById("orLine").hidden = true;
+        }
+      })
+      .catch(() => {});
 
     // Already logged in (e.g. coming back from Google)? Skip this page.
     sb.auth.getSession().then(({ data }) => { if (data.session) done(); });

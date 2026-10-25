@@ -27,6 +27,7 @@
 
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
+    section[id] { scroll-margin-top: 16px; }
     body {
       margin: 0;
       background: var(--cream);
@@ -310,7 +311,7 @@
       </a>
       <div class="nav-links">
         <a href="#how">How it works</a>
-        <a href="/leaderboard">Leaderboard</a>
+        <a href="#leaderboard">Leaderboard</a>
         <a class="btn" href="/login" id="loginLink">Log in</a>
       </div>
     </nav>
@@ -413,7 +414,7 @@
     </section>
 
     <!-- ================= Leaderboard ================= -->
-    <section class="board">
+    <section class="board" id="leaderboard">
       <div class="wrap">
         <div class="board-card">
           <h2>Most focused this week</h2>
