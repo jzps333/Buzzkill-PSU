@@ -59,7 +59,7 @@ journalctl --user -u buzzkill-speaker -u buzzkill -f
 **The demo (about 60 seconds)**
 1. **Tap** the brick → "New game. Your PIN is ..."
 2. Everyone taps the NFC sticker / scans the QR / types the PIN → **tap** again to hear who's in.
-3. 4+ players in → **tap** → "Game on. Phones down." Phones face down.
+3. 4+ players in → **double tap** → "Game on. Phones down." Phones face down.
 4. One person **picks up** their phone → the JBL roasts them by name.
 5. They **shake** the phone → the roast stops.
 6. **Tap** the brick → time left + scoreboard.
@@ -110,8 +110,8 @@ journalctl --user -u buzzkill-speaker -u buzzkill -f    # live logs
 |---|---|
 | **Tap** | "New game. Your PIN is 4, F, 2, A, 9, C." (**double tap** = teams game) |
 | Players tap the NFC sticker, scan the QR, or type the PIN at buzzkill.study | |
-| **Tap** (under 4 players) | the PIN again + who's in: "Need 2 more to start." |
-| **Tap** (4+ players) | "Game on. Phones down. Good luck." |
+| **Tap** (before the game starts) | the PIN + who's in, every time: "Need 2 more to start." / "Double tap to start." |
+| **Double tap** (4+ players) | "Game on. Phones down. Good luck." |
 | Someone picks up their phone | an AI roast on loop until they shake their phone |
 | **Tap** during the game | time left + scoreboard: "Focus time, 18 minutes left. Alex is losing, with 3 pickups. Sam is still clean." |
 | **Hold 3 s** | "Game over. Check your phones for results." (or closes a game that never started) |
