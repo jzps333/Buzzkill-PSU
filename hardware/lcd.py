@@ -8,7 +8,7 @@ import time
 from smbus2 import SMBus
 
 TEXT = 0x3E          # the text chip
-RGB = 0x62           # the backlight chip (v4.0)
+RGB_CHIPS = (0x62, 0x30)   # the backlight chip: 0x62 on v4.0, 0x30 on v5.0
 
 HONEY = (255, 170, 0)
 GREEN = (0, 200, 60)
@@ -28,8 +28,24 @@ class LCD:
         self._cmd(0x0C)          # display on, no cursor
         self._cmd(0x28)          # 2 lines
         time.sleep(0.05)
-        for reg, val in ((0x00, 0x00), (0x08, 0xFF), (0x01, 0x20)):   # backlight chip on (same as Seeed's own code)
-            self.bus.write_byte_data(RGB, reg, val)
+        self.rgb = None          # no backlight chip found = text only, no colors
+        for addr in RGB_CHIPS:
+            try:
+                if addr == 0x62:
+                    for reg, val in ((0x00, 0x00), (0x08, 0xFF), (0x01, 0x20)):   # same as Seeed's own code
+                        self.bus.write_byte_data(addr, reg, val)
+                    self.regs = (0x04, 0x03, 0x02)
+                else:
+                    self.bus.write_byte_data(addr, 0x00, 0x07)
+                    time.sleep(0.2)
+                    self.bus.write_byte_data(addr, 0x04, 0x15)
+                    self.regs = (0x06, 0x07, 0x08)
+                self.rgb = addr
+                break
+            except OSError:
+                pass
+        if self.rgb is None:
+            print("LCD backlight chip not found (0x62 / 0x30): text only, no colors")
 
     def _cmd(self, c):
         self.bus.write_byte_data(TEXT, 0x80, c)
@@ -42,11 +58,9 @@ class LCD:
                 self._cmd(0x80 | (0x40 * row))
                 self.bus.write_i2c_block_data(TEXT, 0x40, [ord(c) if ord(c) < 128 else ord("?") for c in text])
                 self.lines[row] = text
-        if color and color != self.color:
-            r, g, b = color
-            self.bus.write_byte_data(RGB, 0x04, r)
-            self.bus.write_byte_data(RGB, 0x03, g)
-            self.bus.write_byte_data(RGB, 0x02, b)
+        if color and color != self.color and self.rgb:
+            for reg, val in zip(self.regs, color):
+                self.bus.write_byte_data(self.rgb, reg, val)
             self.color = color
 
 

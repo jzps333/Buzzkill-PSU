@@ -54,8 +54,13 @@ fi
 
 # ---------- LCD ----------
 i2c=$(i2cdetect -y 1 2>/dev/null)
-grep -q " 3e" <<<"$i2c" && grep -q " 62" <<<"$i2c" && ok "LCD found" \
-  || bad "LCD not found" "plug it into an I2C port, then: i2cdetect -y 1 (should show 3e and 62)"
+if grep -q " 3e" <<<"$i2c"; then
+  ok "LCD found"
+  grep -qE " 62| 30" <<<"$i2c" && ok "LCD backlight found (colors work)" \
+    || bad "LCD backlight chip not found (text works, no colors)" "it may need 5V: see README"
+else
+  bad "LCD not found" "plug it into an I2C port, then: i2cdetect -y 1 (should show 3e)"
+fi
 
 # ---------- programs ----------
 for s in buzzkill-speaker buzzkill; do
