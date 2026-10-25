@@ -81,3 +81,9 @@ Breaks in the pomodoro don't count.
   Without keys it falls back to built-in roasts.
 - **The brick:** see [`hardware/README.md`](hardware/README.md): `bash setup.sh`, pair the speaker, add the key, done.
   Before a demo, follow its [demo day checklist](hardware/README.md#demo-day-checklist-follow-this-exactly).
+
+## Demo data
+
+`backend/demo_data.sql` adds 18 finished demo games (codes DEMO01–DEMO18) for the team's real accounts, so the dashboards,
+leaderboard and lobby head-to-heads have numbers. Run it again to reshuffle. Remove it all with:
+`delete from public.games where demo;`
