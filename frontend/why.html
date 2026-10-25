@@ -97,6 +97,24 @@
     .help p { margin: 0; font-size: 14px; color: var(--ink-2); }
     @media (max-width: 720px) { .help { grid-template-columns: 1fr; } }
 
+    /* The studies: problem -> research -> our fix */
+    .studies { display: grid; gap: 14px; margin-top: 22px; }
+    .study { border-radius: 22px; overflow: hidden; border: 1px solid var(--line); background: var(--white); }
+    .study-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; padding: 18px 24px; background: var(--ink); color: var(--white); }
+    .study-head h3 { margin: 0; font-size: 19px; font-weight: 800; }
+    .study-head a { font-size: 14px; font-weight: 700; color: var(--honey); white-space: nowrap; }
+    .study-body { display: grid; grid-template-columns: 1fr 1fr; }
+    .study-body > div { padding: 20px 24px; }
+    .study-body .ours { background: var(--sand); }
+    .study .tag { margin: 0 0 6px; font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ink-2); }
+    .study ul { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-2); }
+    .study li { margin-bottom: 4px; }
+    .study li b { color: var(--ink); }
+    .study .cite { margin: 10px 0 0; font-size: 12px; color: var(--ink-2); }
+    .study .ours p { margin: 0 0 6px; font-size: 14px; color: var(--ink-2); }
+    .study .ours h4 { margin: 0 0 6px; font-size: 16px; font-weight: 800; }
+    @media (max-width: 720px) { .study-body { grid-template-columns: 1fr; } }
+
     /* So far */
     .sofar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 22px; }
     @media (max-width: 720px) { .sofar { grid-template-columns: 1fr; } }
@@ -211,6 +229,90 @@
       </div>
     </section>
 
+    <!-- 3b. The studies -->
+    <section aria-labelledby="studies">
+      <p class="eyebrow">The evidence</p>
+      <h2 id="studies">Students have a phone problem. We built the fix.</h2>
+      <p class="lede">Three studies, three ways phones hurt studying, and the part of Buzzkill that answers each one. Every card links to the paper.</p>
+      <div class="studies">
+
+        <article class="study">
+          <div class="study-head">
+            <h3>Phones eat a quarter of class time</h3>
+            <a href="https://doi.org/10.1016/j.compedu.2019.103611" target="_blank" rel="noopener">Read the paper →</a>
+          </div>
+          <div class="study-body">
+            <div>
+              <p class="tag">What they found</p>
+              <ul>
+                <li>Researchers tracked real college students' phones in class for a whole semester.</li>
+                <li>Students were on their phones for <b>over 25% of class time</b>.</li>
+                <li>A phone distraction happened <b>every 3–4 minutes</b> and lasted over a minute.</li>
+                <li>More phone use in class went with <b>lower grades</b>.</li>
+              </ul>
+              <p class="cite">Kim, Kim, Kim, Kim, Han, Lee, Mark &amp; Lee, "Understanding smartphone usage in college classrooms: A long-term measurement study," <i>Computers &amp; Education</i>, 2019.</p>
+            </div>
+            <div class="ours">
+              <p class="tag">How Buzzkill fixes it</p>
+              <h4>Every pickup gets caught and counted</h4>
+              <p>The 3–4 minute check-in habit only works because nobody notices. Buzzkill notices every single pickup, roasts you out loud, and makes you shake it off.</p>
+              <p>Your pickups per hour and your longest focus stretch show up on your dashboard and the leaderboard, so you can watch the habit shrink.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="study">
+          <div class="study-head">
+            <h3>Even a buzz you ignore breaks your focus</h3>
+            <a href="https://doi.org/10.1037/xhp0000100" target="_blank" rel="noopener">Read the paper →</a>
+          </div>
+          <div class="study-body">
+            <div>
+              <p class="tag">What they found</p>
+              <ul>
+                <li>People did an attention task while some got calls or texts on their own phone.</li>
+                <li>They <b>never touched the phone</b>, and still made <b>more mistakes</b>.</li>
+                <li>The drop was about as big as the one from <b>actually using a phone</b>.</li>
+                <li>Why: a notification starts your mind wandering, and that lasts after the buzz ends.</li>
+              </ul>
+              <p class="cite">Stothart, Mitchum &amp; Yehnert, "The Attentional Cost of Receiving a Cell Phone Notification," <i>Journal of Experimental Psychology: Human Perception and Performance</i>, 2015.</p>
+            </div>
+            <div class="ours">
+              <p class="tag">How Buzzkill fixes it</p>
+              <h4>Face down, and checking waits for the break</h4>
+              <p>Phones lie face down for the whole session, so a lit-up screen can't pull you in. And since picking up costs you, there's no point in "just checking."</p>
+              <p>The group votes on a pomodoro (like 25 minutes of focus, then 5 of break). Breaks are free phone time, so you know exactly when you can look.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="study">
+          <div class="study-head">
+            <h3>Phone distraction makes you forget what you just learned</h3>
+            <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4901454" target="_blank" rel="noopener">Read the paper →</a>
+          </div>
+          <div class="study-body">
+            <div>
+              <p class="tag">What they found</p>
+              <ul>
+                <li>A meta-analysis combining <b>27 randomized experiments</b> with <b>2,245 participants</b>.</li>
+                <li>Phone distraction had a <b>medium-sized negative effect</b> on what students remembered right after learning.</li>
+                <li>The hit was <b>biggest for lectures</b>. (Results for reading were mixed, so the authors call that part tentative.)</li>
+              </ul>
+              <p class="cite">Chen, Yan, Moeyaert &amp; Bangert-Drowns, "Mobile Multitasking in Learning: A Meta-Analysis of Effects of Mobilephone Distraction on Young Adults' Immediate Recall," SSRN preprint, 2024.</p>
+            </div>
+            <div class="ours">
+              <p class="tag">How Buzzkill fixes it</p>
+              <h4>Protect the whole session, together</h4>
+              <p>Buzzkill is built for study groups: everyone's phone is on the line, so you keep each other honest from start to finish.</p>
+              <p>Teams mode raises the stakes. One person's pickup busts the whole team, so nobody wants to be the one who slips.</p>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
     <!-- 4. What helps -->
     <section aria-labelledby="helps">
       <p class="eyebrow">Winning it back</p>
@@ -298,6 +400,12 @@
           <a href="https://doi.org/10.1086/691462" target="_blank" rel="noopener">doi.org/10.1086/691462</a></li>
         <li>Randomized phone-free lectures at 10 colleges in India: grades up 0.07 SD, largest gains for struggling students.
           <a href="https://knowledge.wharton.upenn.edu/?p=39549" target="_blank" rel="noopener">Knowledge at Wharton</a></li>
+        <li>Kim et al., "Understanding smartphone usage in college classrooms: A long-term measurement study," Computers &amp; Education, 2019.
+          <a href="https://doi.org/10.1016/j.compedu.2019.103611" target="_blank" rel="noopener">doi.org/10.1016/j.compedu.2019.103611</a></li>
+        <li>Stothart, Mitchum &amp; Yehnert, "The Attentional Cost of Receiving a Cell Phone Notification," Journal of Experimental Psychology: Human Perception and Performance, 2015.
+          <a href="https://doi.org/10.1037/xhp0000100" target="_blank" rel="noopener">doi.org/10.1037/xhp0000100</a></li>
+        <li>Chen, Yan, Moeyaert &amp; Bangert-Drowns, "Mobile Multitasking in Learning: A Meta-Analysis of Effects of Mobilephone Distraction on Young Adults' Immediate Recall," SSRN, 2024.
+          <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4901454" target="_blank" rel="noopener">SSRN 4901454</a></li>
         <li>Why the "goldfish" attention-span stat is a myth.
           <a href="https://internet.psych.wisc.edu/wp-content/uploads/532-Master/532-UnitPages/Unit-09/Goldfish_MythBusting.pdf" target="_blank" rel="noopener">Wall Street Journal, via UW–Madison</a></li>
       </ol>
