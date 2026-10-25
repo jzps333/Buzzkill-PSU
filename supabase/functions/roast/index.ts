@@ -77,7 +77,7 @@ ${facts}`;
           headers: { "Content-Type": "application/json", "x-goog-api-key": key },
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 1.1, maxOutputTokens: 120 },
+            generationConfig: { temperature: 1.1, maxOutputTokens: 2048 },   // newer Gemini "thinks" first and that uses up tokens too
           }),
         });
         if (!r.ok) {                                           // model not available -> try the next one
@@ -86,9 +86,10 @@ ${facts}`;
           continue;
         }
         const data = await r.json();
-        const text = (data?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? "").join("")
+        const text = (data?.candidates?.[0]?.content?.parts ?? []).filter((p: { thought?: boolean }) => !p.thought).map((p: { text?: string }) => p.text ?? "").join("")
           .replace(/["*#_`]/g, "").replace(/\s+/g, " ").trim();
-        if (text) return text.slice(0, 240);
+        if (plain(text).length > 5) return text.slice(0, 300);
+        problems.push(`Gemini ${model}: empty answer (${data?.candidates?.[0]?.finishReason ?? "?"})`);
       } catch (e) { problems.push(`Gemini ${model}: ${e}`); }
     }
   }
@@ -115,6 +116,7 @@ async function speak(text: string): Promise<ArrayBuffer | null> {
   if (!key) { problems.push("ELEVENLABS_API_KEY secret is missing"); return null; }
   for (const v of VOICES) {
     const line = v.model.includes("v3") ? onlyKnownTags(text) : plain(text);
+    if (!plain(line)) { problems.push("Roast text was empty"); return null; }
     try {
       const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE}?output_format=mp3_44100_128`, {
         method: "POST",
