@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzkill · Game</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #111; color: #eee; max-width: 420px; margin: 0 auto; padding: 32px 16px; text-align: center; }
+    #big { font-size: 64px; margin: 24px 0 8px; }
+    #status { font-size: 20px; font-weight: 600; }
+    #hint { color: #999; margin-top: 8px; }
+    button { width: 100%; padding: 16px; margin-top: 24px; border: 0; border-radius: 10px; background: #f5c542; color: #111; font-size: 18px; font-weight: 700; }
+    #debug { margin-top: 32px; color: #555; font-size: 12px; font-family: ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+  <h1>Buzzkill</h1>
+  <div id="big">📵</div>
+  <div id="status">Joining…</div>
+  <div id="hint"></div>
+  <button id="start" hidden>I'm ready</button>
+  <div id="debug"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script>
+    const room = new URLSearchParams(location.search).get("room");
+    const $ = id => document.getElementById(id);
+    const show = (big, status, hint = "") => { $("big").textContent = big; $("status").textContent = status; $("hint").textContent = hint; };
+
+    let token = null;          // login token, sent with every event
+    let gameStatus = null;     // waiting / live / ended
+
+    // ---------- 1. Send an event to Supabase (the Pi hears it instantly) ----------
+    // keepalive: true lets it finish even while the page is being left
+    function send(type) {
+      if (!token) return;
+      fetch(`${SUPABASE_URL}/rest/v1/events`, {
+        method: "POST",
+        keepalive: true,
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({ game: room, type }),
+      });
+    }
+
+    // ---------- 2. Join ----------
+    async function join() {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) {                                         // not logged in → login page, then come back
+        location.href = "login?next=" + encodeURIComponent(location.pathname + location.search);
+        return;
+      }
+      token = session.access_token;
+      sb.auth.onAuthStateChange((_e, s) => { if (s) token = s.access_token; });   // keep token fresh
+
+      const { data: game } = await sb.from("games").select("status").eq("code", room).maybeSingle();
+      if (!room || !game || game.status === "ended") {
+        show("🚫", "No game running", "Tap the brick to start a new one.");
+        return;
+      }
+      send("join");
+      setStatus(game.status);
+      $("start").hidden = false;
+
+      // Watch the game live: waiting → live → ended
+      sb.channel("game-" + room)
+        .on("postgres_changes",
+            { event: "UPDATE", schema: "public", table: "games", filter: `code=eq.${room}` },
+            p => setStatus(p.new.status))
+        .subscribe();
+    }
+
+    function setStatus(s) {
+      gameStatus = s;
+      if (s === "waiting") show("⏳", "You're in!", "Waiting for 4+ players. Then tap the brick to start.");
+      if (s === "live")    show("📵", "Game on", "Phone face down. Don't touch it.");
+      if (s === "ended")   { show("🏁", "Game over", "Check the leaderboard."); stopMotion(); setTimeout(() => location.href = "leaderboard", 3000); }
+    }
+
+    // ---------- 3. "I'm ready" button: permissions ----------
+    $("start").onclick = async () => {
+      // iPhone needs a button tap to allow motion. Android skips this.
+      if (typeof DeviceMotionEvent?.requestPermission === "function") {
+        if (await DeviceMotionEvent.requestPermission() !== "granted") {
+          show("⚠️", "Motion access needed", "Reload and tap Allow.");
+          return;
+        }
+      }
+      await keepAwake();
+      window.addEventListener("devicemotion", onMotion);
+      $("start").hidden = true;
+      $("hint").textContent = "Now put your phone face down.";
+    };
+
+    // ---------- 4. Motion: pickup + shake ----------
+    let baseline = null, isDown = false, lastPickup = 0, shakeTimes = [];
+
+    function onMotion(e) {
+      const g = e.accelerationIncludingGravity;
+      if (!g || g.x === null) return;
+      const v = [g.x, g.y, g.z];
+
+      // 4a. Remember which way gravity points when the phone first lies flat
+      if (!baseline) {
+        if (Math.abs(g.z) > 9) { baseline = v; isDown = true; $("hint").textContent = "✅ Locked in. Don't touch it."; }
+        return;
+      }
+
+      // 4b. Pickup: compare gravity now vs. lying flat (cosine similarity)
+      const sim = cosine(v, baseline);
+      if (isDown && sim < 0.7) {                         // tilted more than ~45°
+        isDown = false;
+        if (gameStatus === "live" && Date.now() - lastPickup > 2000) {
+          lastPickup = Date.now();
+          send("pickup");
+          show("🚨", "BUSTED", "Shake your phone to shut it up.");
+        }
+      } else if (!isDown && sim > 0.95) {                 // back flat
+        isDown = true;
+        if (gameStatus === "live") show("📵", "Game on", "Phone face down. Don't touch it.");
+      }
+
+      // 4c. Shake: 3 hard jolts within 1 second
+      const a = e.acceleration;
+      const strength = (a && a.x !== null) ? Math.hypot(a.x, a.y, a.z) : Math.abs(Math.hypot(...v) - 9.8);
+      if (strength > 18) {
+        const now = Date.now();
+        shakeTimes = shakeTimes.filter(t => now - t < 1000);
+        shakeTimes.push(now);
+        if (shakeTimes.length >= 3) { shakeTimes = []; send("shake"); }
+      }
+
+      $("debug").textContent = `sim ${sim.toFixed(2)} · force ${strength.toFixed(1)}`;
+    }
+
+    function cosine(a, b) {
+      const dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      return dot / (Math.hypot(...a) * Math.hypot(...b));
+    }
+
+    function stopMotion() { window.removeEventListener("devicemotion", onMotion); }
+
+    // ---------- 5. Keep the screen on ----------
+    async function keepAwake() { try { await navigator.wakeLock.request("screen"); } catch {} }
+
+    // ---------- 6. Leaving the page counts as a pickup ----------
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        if (gameStatus === "live") send("left_page");
+      } else {
+        keepAwake();   // the browser drops the wake lock when you leave
+      }
+    });
+
+    join();
+  </script>
+</body>
+</html>

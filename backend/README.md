@@ -5,7 +5,7 @@ Supabase handles logins and the database. There's no server code to run for this
 ## Setup (once)
 
 1. Make a project at supabase.com.
-2. **SQL Editor** → paste all of `schema.sql` → **Run**.
+2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same with `events.sql`. (Both are already done for the buzzkill project.)
 3. **Authentication → Sign In / Providers**:
    - Turn **on** "Allow anonymous sign-ins" (this is how guests work).
    - Turn **off** "Confirm email" (so signups work instantly at the hackathon).
@@ -18,6 +18,7 @@ Supabase handles logins and the database. There's no server code to run for this
 | `profiles` | One row per user: username, guest or not, Solana wallet |
 | `games` | One row per study session: room code, status, start/end time |
 | `results` | One row per person per game: pickups, SOL in, SOL back |
+| `events` | Every join, pickup and shake from a phone. The Pi listens to it live. |
 | `leaderboard` (view) | Stats calculated from `results`, most focused first |
 
 ## Stats
