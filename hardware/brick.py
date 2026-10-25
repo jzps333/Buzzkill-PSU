@@ -122,6 +122,7 @@ def on_tap():
     global page
     if not ONLINE:
         note("No secret key", "Fill in .env", lcd.RED)
+        say("Buzzkill is ready, but not connected to the game yet. Add the secret key.")
         return
     if code is None:
         return new_game("solo")
