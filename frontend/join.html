@@ -88,13 +88,13 @@
       if (s === "ended")   { show("🏁", "Game over", "Loading results…"); stopMotion(); setTimeout(() => location.href = "results?room=" + room, 2000); }
     }
 
-    // The database decides when your alarm is on and how many shakes you need
+    // The database decides when your alarm is on and how long you still have to shake
     let alarmOn = false;
     function setAlarm(r) {
       alarmOn = r.alarm_on && gameStatus === "live";
       if (alarmOn) {
-        const left = r.shakes_needed - r.shakes_done;
-        show("🚨", "BUSTED", `Shake it! ${left} more shake${left === 1 ? "" : "s"} to shut it up.`);
+        const left = Math.max(0, Math.ceil(r.shake_secs_needed - r.shake_secs_done));
+        show("🚨", "BUSTED", `Keep shaking! ${left}s left. Stop and the clock pauses.`);
       } else if (gameStatus === "live") {
         show("😮‍💨", "Alarm off", `Pickup #${r.pickups} counted. Put it back face down.`);
       }
@@ -143,13 +143,13 @@
         if (gameStatus === "live" && !alarmOn) show("📵", "Game on", "Phone face down. Don't touch it.");
       }
 
-      // 4c. Shake: every hard jolt counts as 1 shake while your alarm is on.
-      //     You need 3 shakes for your 1st pickup, 6 for the 2nd, 9, 12, then 15 max.
+      // 4c. Shake: while your alarm is on, send "shake" about twice a second as long as you keep shaking.
+      //     The database turns that into shaking time: 30s for your 1st pickup, 60s for the 2nd, and so on.
       const a = e.acceleration;
       const strength = (a && a.x !== null) ? Math.hypot(a.x, a.y, a.z) : Math.abs(Math.hypot(...v) - 9.8);
       if (strength > 18 && alarmOn) {
         const now = Date.now();
-        if (now - (shakeTimes[0] || 0) > 200) {           // one jolt = one shake, not 10
+        if (now - (shakeTimes[0] || 0) > 400) {           // at most ~2 messages per second
           shakeTimes = [now];
           send("shake");
         }

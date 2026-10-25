@@ -11,8 +11,8 @@ alter table public.games
 
 alter table public.results
   add column alarm_on        boolean     not null default false,  -- roast is playing for this person
-  add column shakes_needed   int         not null default 0,      -- shakes to turn it off
-  add column shakes_done     int         not null default 0,
+  add column shake_secs_needed numeric   not null default 0,      -- seconds of shaking to turn it off (30 per pickup)
+  add column shake_secs_done   numeric   not null default 0,      -- seconds shaken so far
   add column first_pickup_at timestamptz,                         -- for "First to Fold"
   add column last_shake_at   timestamptz;                         -- stops shake spamming
 
@@ -125,24 +125,35 @@ begin
     insert into public.results (game, user_id) values (new.game, new.user_id)
     on conflict do nothing;
 
-  -- PICKUP: +1, alarm on. Shakes needed grows: 3, 6, 9, 12, then 15 max.
+  -- PICKUP: +1, alarm on. Each pickup adds 30 seconds of shaking: 30s, 60s, 90s, ...
   elsif new.type in ('pickup', 'left_page') and g = 'live' then
     update public.results set
-      pickups         = pickups + 1,
-      alarm_on        = true,
-      shakes_needed   = least(3 * (pickups + 1), 15),
-      shakes_done     = 0,
-      first_pickup_at = coalesce(first_pickup_at, now())
+      pickups           = pickups + 1,
+      alarm_on          = true,
+      shake_secs_needed = 30 * (pickups + 1),
+      shake_secs_done   = 0,
+      last_shake_at     = null,
+      first_pickup_at   = coalesce(first_pickup_at, now())
     where game = new.game and user_id = new.user_id and not alarm_on;   -- already roasting? don't count twice
 
-  -- SHAKE: count it (max ~6 per second). Enough shakes = alarm off.
+  -- SHAKE: the phone sends this about twice a second while you shake.
+  --   Time between two shakes counts as shaking time (max 1 second each).
+  --   Stop for more than 1.5 seconds and the clock pauses until you start again.
   elsif new.type = 'shake' and g = 'live' then
     update public.results set
-      shakes_done   = shakes_done + 1,
-      alarm_on      = shakes_done + 1 < shakes_needed,
+      shake_secs_done = shake_secs_done + case
+        when last_shake_at > now() - interval '1.5 seconds'
+          then least(extract(epoch from now() - last_shake_at), 1)
+        else 0
+      end,
       last_shake_at = now()
     where game = new.game and user_id = new.user_id and alarm_on
       and (last_shake_at is null or last_shake_at < now() - interval '150 milliseconds');
+
+    -- Shook long enough? Alarm off.
+    update public.results set alarm_on = false
+    where game = new.game and user_id = new.user_id and alarm_on
+      and shake_secs_done >= shake_secs_needed;
   end if;
 
   return new;

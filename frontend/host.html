@@ -106,7 +106,7 @@
     // ---------- 3. Player list (names are set with textContent, so they can't run code) ----------
     async function loadPlayers() {
       const { data } = await sb.from("results")
-        .select("user_id, pickups, alarm_on, shakes_needed, shakes_done, profiles(username)")
+        .select("user_id, pickups, alarm_on, shake_secs_needed, shake_secs_done, profiles(username)")
         .eq("game", code);
       players = data || [];
 
@@ -117,7 +117,7 @@
         const info = document.createElement("span");
         name.textContent = p.profiles?.username ?? "player";
         info.textContent = p.alarm_on
-          ? `🚨 ${p.shakes_needed - p.shakes_done} shakes left`
+          ? `🚨 shaking: ${Math.max(0, Math.ceil(p.shake_secs_needed - p.shake_secs_done))}s left`
           : `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`;
         li.append(name, info);
         return li;

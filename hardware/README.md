@@ -22,7 +22,7 @@ sb.rpc("finish_game", {"p_code": code}).execute()
 ```
 
 **2. Listen for alarms → play sounds.** Subscribe to Realtime `UPDATE`s on the `results` table
-(filter `game=eq.CODE`). Each row has `user_id`, `alarm_on`, `pickups`, `shakes_needed`, `shakes_done`.
+(filter `game=eq.CODE`). Each row has `user_id`, `alarm_on`, `pickups`, `shake_secs_needed`, `shake_secs_done`.
 
 - `alarm_on` turns **true** → play a roast on loop (look up the name in `profiles.username`)
 - `alarm_on` turns **false** → stop it (they shook it off)
