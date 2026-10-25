@@ -99,6 +99,21 @@
     .runner.back { animation: knock .5s; }
     @keyframes knock { 30% { transform: translateX(-10px) rotate(-8deg); } }
     .race-line { margin: 8px 0 0; font-size: 13px; color: #3E3420; }
+    /* ---------- Lobby: who's here, and how you stack up ---------- */
+    .lobby { margin-top: 14px; text-align: left; }
+    .lobby > p { margin: 0 0 8px; font-size: 14px; font-weight: 800; }
+    .pcard { margin-bottom: 10px; padding: 12px 14px; border-radius: 16px; background: rgba(255,255,255,.7); }
+    .pcard-top { display: flex; align-items: center; gap: 10px; }
+    .pcard-top .av { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: #fff; font-weight: 800; flex: none; }
+    .pcard-top b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+    .pcard-top button { padding: 7px 12px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; font: 800 13px var(--font); cursor: pointer; }
+    .pcard-top .tagf { font-size: 12px; font-weight: 800; color: #5A4710; }
+    .pcard .headline { margin: 8px 0 6px; font-size: 14px; font-weight: 800; }
+    .pcard dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 12.5px; }
+    .pcard dt { color: #5A4710; font-weight: 700; }
+    .pcard dd { margin: 0; font-weight: 600; }
+    .pcard dd .win { color: #1F7A45; font-weight: 800; }
+
     @media (prefers-reduced-motion: reduce) { .runner { transition: none; } .runner.back { animation: none; } }
 
     @media (prefers-reduced-motion: reduce) { .busted { animation: none; box-shadow: inset 0 0 0 8px var(--red); } }
@@ -137,6 +152,10 @@
           <button data-choice="none"><b>No breaks</b>until it ends</button>
         </div>
         <p class="vote-tally" id="tally"></p>
+      </div>
+      <div class="lobby" id="lobby" hidden>
+        <p id="lobbyTitle">👥 In the lobby</p>
+        <div id="lobbyList"></div>
       </div>
     </div>
     <div id="debug"></div>
@@ -244,6 +263,8 @@
       if (s === "waiting" && joined)  show("happy", "You're in!", "Waiting for 4+ players. Then tap the brick to start.");
       if (s === "live")    show("happy", "Phones down.", "Face down on the brick. Buzz is watching.");
       $("vote").hidden = !(s === "waiting" && joined);
+      $("lobby").hidden = !(s === "waiting" && joined);
+      if (s === "waiting" && joined) loadLobby(true);
       if (s === "live") { loadMine(); tick(); loadRace(); }
       if (s === "ended")   { hideBusted(); show("happy", "Game over", "Loading results…"); stopMotion(); setTimeout(() => location.href = "results?room=" + room, 2000); }
       if (s === "cancelled") { hideBusted(); stopMotion(); $("start").hidden = true; show("worried", "Game closed", "The host closed this game. Enter a new PIN on buzzkill.study."); }
@@ -261,7 +282,73 @@
       const n = {};
       (data || []).forEach(r => { if (r.pomo_vote) n[r.pomo_vote] = (n[r.pomo_vote] || 0) + 1; });
       const parts = Object.entries(n).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${POMO[k]?.[2] ?? k} ${v}`);
+      loadLobby();
       $("tally").textContent = `${(data || []).length} in the lobby` + (parts.length ? ` · votes: ${parts.join(", ")}` : " · no votes yet (Classic if nobody votes)");
+    }
+
+    // ---------- Lobby: everyone waiting with you, your record against them, and a quick + Add ----------
+    let lobbyKey = "", lobbyBusy = false, iAmGuest = null;
+    const dur = s => s == null ? "—" : s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h ${String(Math.floor(s % 3600 / 60)).padStart(2, "0")}m`;
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+    async function loadLobby(force) {
+      if (gameStatus !== "waiting" || !joined || lobbyBusy) return;
+      lobbyBusy = true;
+      try {
+        if (iAmGuest === null) {
+          const { data: pr } = await sb.from("profiles").select("is_guest").eq("id", me).maybeSingle();
+          iAmGuest = !!pr?.is_guest;
+        }
+        const { data, error } = await sb.rpc("lobby_players", { p_code: room });
+        if (error) return;
+        const key = JSON.stringify(data);
+        if (!force && key === lobbyKey) return;           // nobody new: don't redraw
+        lobbyKey = key;
+        $("lobbyTitle").textContent = data.length ? `👥 In the lobby with you (${data.length})` : "👥 Nobody else here yet. Share the PIN!";
+        $("lobbyList").replaceChildren(...data.map(card));
+      } finally { lobbyBusy = false; }
+    }
+
+    function card(p) {
+      const c = el("div", "pcard");
+      const top = el("div", "pcard-top");
+      top.append(el("span", "av", (p.username || "?").charAt(0).toUpperCase()), el("b", "", p.username));
+      // Quick add (real accounts only)
+      if (p.friend === "friends") top.append(el("span", "tagf", "✓ Friends"));
+      else if (p.friend === "sent") top.append(el("span", "tagf", "Request sent"));
+      else if (p.friend === "received") top.append(el("span", "tagf", "Wants to be friends"));
+      else if (!iAmGuest && !p.is_guest) {
+        const b = el("button", "", "+ Add");
+        b.onclick = async () => {
+          b.disabled = true;
+          const { error } = await sb.rpc("send_friend_request", { p_username: p.username });
+          if (error) { b.disabled = false; b.textContent = "Try again"; return; }
+          b.replaceWith(el("span", "tagf", "Request sent"));
+        };
+        top.append(b);
+      }
+      c.append(top);
+
+      const n = p.games_together;
+      if (!n) {
+        c.append(el("p", "headline", "🆕 First game together. Let's see who blinks first."));
+      } else {
+        const pct = Math.round(p.they_won / n * 100);
+        c.append(el("p", "headline", pct > 50 ? `😬 Beats you ${pct}% of the time` : p.you_won > p.they_won ? `😎 You beat them ${Math.round(p.you_won / n * 100)}% of the time` : `⚖️ Beats you ${pct}% of the time`));
+      }
+      const dl = el("dl");
+      const row = (label, value) => { dl.append(el("dt", "", label)); const dd = el("dd"); dd.append(...value); dl.append(dd); };
+      const vs = (them, you, lowerWins, fmt) => {   // "them 1.0 · you 1.6", your number green when you're ahead
+        if (them == null && you == null) return ["—"];
+        const youAhead = them != null && you != null && (lowerWins ? +you < +them : +you > +them);
+        return [`them ${fmt(them)} · `, el("span", youAhead ? "win" : "", `you ${fmt(you)}`)];
+      };
+      if (n) row("Together", [`${n} game${n === 1 ? "" : "s"} · last time you ${p.last_result === "won" ? "won 🏆" : p.last_result === "lost" ? "lost" : "tied"}`]);
+      row("Pickups/hr", vs(p.their_pph, p.your_pph, true, v => v ?? "—"));
+      row("Longest focus", vs(p.their_longest, p.your_longest, false, dur));
+      row("Clean games", vs(p.their_clean, p.your_clean, false, v => v == null ? "—" : v + "%"));
+      c.append(dl);
+      return c;
     }
 
     // ---------- My row: team + emergency pass ----------
