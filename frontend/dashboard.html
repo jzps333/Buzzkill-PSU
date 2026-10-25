@@ -4,78 +4,157 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Buzzkill · Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --cream: #FFFAEB; --honey: #F5D35A; --sand: #F4EEDC; --peach: #F7E4BF;
+      --ink: #1F1B16; --ink-2: #5E574B; --line: #EAE2CC; --white: #FFFFFF;
+      --green: #2F8A55; --red: #B42323;
+      --font: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #eee; line-height: 1.4; }
-    main { max-width: 520px; margin: 0 auto; padding: 28px 16px 48px; }
-    header { display: flex; justify-content: space-between; align-items: center; }
-    h1 { margin: 0; font-size: 1.6rem; }
-    .muted { color: #888; }
-    .card { background: #1b1b1b; border: 1px solid #2a2a2a; border-radius: 14px; padding: 18px; margin-top: 16px; }
-    .card h2 { margin: 0 0 4px; font-size: 1.1rem; }
-    .btn { display: block; width: 100%; padding: 14px; margin-top: 12px; border: 0; border-radius: 10px; font-size: 1rem; font-weight: 700; text-align: center; text-decoration: none; cursor: pointer; }
-    .primary { background: #f5c542; color: #111; }
-    .secondary { background: #262626; color: #eee; border: 1px solid #333; }
-    .link { background: none; border: 0; color: #888; font-size: .95rem; cursor: pointer; padding: 0; }
-    .row { display: flex; gap: 8px; margin-top: 12px; }
-    .row input { flex: 1; min-width: 0; padding: 14px; border-radius: 10px; border: 1px solid #333; background: #111; color: #eee;
-                 font-size: 1.2rem; letter-spacing: 4px; text-transform: uppercase; }
-    .row .btn { width: auto; margin: 0; padding: 14px 20px; }
-    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
-    .stat { background: #141414; border-radius: 10px; padding: 12px; }
-    .stat b { display: block; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
-    .up { color: #6fdc8c; } .down { color: #ff7a7a; }
-    #msg { color: #ff7a7a; margin-top: 10px; min-height: 1.2em; }
+    body { margin: 0; min-height: 100svh; background: var(--cream); color: var(--ink); font: 500 16px/1.55 var(--font); -webkit-font-smoothing: antialiased; }
+    a { color: inherit; }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+
+    .wrap { width: min(1040px, 100% - 32px); margin: 0 auto; }
+
+    /* Nav (same as the landing page) */
+    .nav { display: flex; align-items: center; justify-content: space-between; height: 72px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; text-decoration: none; }
+    .brand-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--honey); display: grid; place-items: center; }
+    .nav-links { display: flex; align-items: center; gap: 22px; font-size: 14px; font-weight: 700; }
+    .nav-links a { text-decoration: none; }
+    .nav-links a:hover { text-decoration: underline; }
+    .pill { height: 38px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--ink); color: var(--white); font: 700 14px var(--font); cursor: pointer; }
+    .pill:hover { background: #3A332A; }
+
+    main { width: min(600px, 100%); margin: 0 auto; padding: 8px 0 64px; }
+
+    /* Hello */
+    .hello { display: flex; align-items: center; gap: 16px; padding: 22px 24px; border-radius: 24px; background: var(--honey); }
+    .hello .bee { flex: none; width: 74px; }
+    .hello p { margin: 0; font-size: 14px; font-weight: 700; color: #5A4710; }
+    .hello h1 { margin: 0; font-size: clamp(26px, 5vw, 34px); line-height: 1.1; font-weight: 800; letter-spacing: -.8px; word-break: break-word; }
+    .hello .tag { display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,.6); font-size: 12px; font-weight: 800; }
+
+    .card { margin-top: 14px; padding: 22px 22px 20px; border: 1px solid var(--line); border-radius: 22px; background: var(--white); }
+    .card.active { border: 0; background: var(--ink); color: var(--white); }
+    .card.active .sub { color: #D8D0BE; }
+    .card h2 { margin: 0 0 2px; font-size: 20px; font-weight: 800; letter-spacing: -.3px; }
+    .sub { margin: 0; font-size: 14px; color: var(--ink-2); }
+
+    .btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; height: 50px; margin-top: 14px;
+      border: 0; border-radius: 999px;
+      background: var(--ink); color: var(--white);
+      font: 800 15px var(--font); text-decoration: none; cursor: pointer;
+    }
+    .btn:hover { background: #3A332A; }
+    .btn.honey { background: var(--honey); color: var(--ink); }
+    .btn.honey:hover { background: #E9BF2E; }
+    .btn.ghost { background: var(--sand); color: var(--ink); }
+    .btn.ghost:hover { background: #EBE3CC; }
+
+    .code-box { display: flex; gap: 8px; margin-top: 14px; padding: 6px 6px 6px 18px; border: 2px solid var(--ink); border-radius: 16px; }
+    .code-box input { flex: 1; min-width: 0; height: 46px; border: 0; outline: none; background: transparent; color: var(--ink); font: 800 20px var(--font); letter-spacing: 3px; text-transform: uppercase; }
+    .code-box input::placeholder { color: #A39C8C; font-weight: 600; font-size: 17px; letter-spacing: 1px; text-transform: none; }
+    .code-box .btn { width: auto; height: 46px; margin: 0; padding: 0 22px; border-radius: 11px; }
+
+    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 14px; }
+    .stat { padding: 14px 16px; border-radius: 14px; background: var(--sand); }
+    .stat b { display: block; font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+    .stat span { font-size: 13px; color: var(--ink-2); font-weight: 600; }
+    .up { color: var(--green); } .down { color: var(--red); }
+    .nemesis { margin-top: 12px; padding: 12px 16px; border-radius: 14px; background: var(--peach); font-size: 14px; font-weight: 600; }
+    .empty { margin-top: 10px; font-size: 14px; color: var(--ink-2); }
+
+    #msg { min-height: 1.4em; margin: 12px 0 0; text-align: center; font-size: 14px; font-weight: 700; color: var(--red); }
+
+    @media (max-width: 560px) {
+      .nav-links a { display: none; }
+      .hello { padding: 18px; }
+      .hello .bee { width: 58px; }
+      .card { padding: 18px 16px; }
+      .code-box { flex-direction: column; padding: 8px; }
+      .code-box input { text-align: center; }
+      .code-box .btn { width: 100%; }
+    }
   </style>
 </head>
 <body>
-  <main>
-    <header>
-      <div>
-        <div class="muted">Welcome back</div>
-        <h1 id="name">…</h1>
+  <div class="wrap">
+    <nav class="nav">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3c-3.6 0-6 2.7-6 6.3V14l-2 3h16l-2-3V9.3C18 5.7 15.6 3 12 3z" fill="#1F1B16"/><circle cx="12" cy="19.5" r="2.2" fill="#1F1B16"/></svg>
+        </span>
+        Buzzkill
+      </a>
+      <div class="nav-links">
+        <a href="/#how">How it works</a>
+        <a href="/#leaderboard">Leaderboard</a>
+        <button class="pill" id="logout">Log out</button>
       </div>
-      <button class="link" id="logout">Log out</button>
-    </header>
+    </nav>
+  </div>
+
+  <main>
+    <section class="hello">
+      <div class="bee" id="bee"></div>
+      <div>
+        <p>Welcome back</p>
+        <h1 id="name">…</h1>
+        <span class="tag" id="guestTag" hidden>Guest</span>
+      </div>
+    </section>
 
     <!-- Shows only if you're already in a game -->
-    <div class="card" id="activeCard" hidden>
+    <section class="card active" id="activeCard" hidden>
       <h2 id="activeTitle"></h2>
-      <div class="muted" id="activeSub"></div>
-      <a class="btn primary" id="activeBtn"></a>
-    </div>
+      <p class="sub" id="activeSub"></p>
+      <a class="btn honey" id="activeBtn"></a>
+    </section>
 
-    <div class="card">
+    <section class="card">
       <h2>Join a game</h2>
-      <div class="muted">Tap your phone on the brick, or type the code.</div>
-      <form class="row" id="joinForm">
-        <input id="code" maxlength="12" placeholder="CODE" autocomplete="off" autocapitalize="characters" required>
-        <button class="btn primary">Join</button>
+      <p class="sub">Tap your phone on the brick, or type the game PIN.</p>
+      <form class="code-box" id="joinForm">
+        <input id="code" maxlength="12" placeholder="Enter game PIN" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Game PIN" required>
+        <button class="btn">Join</button>
       </form>
-    </div>
+    </section>
 
-    <div class="card">
+    <section class="card">
       <h2>Host a game</h2>
-      <div class="muted" id="hostSub">Start a session for your group (4+ players).</div>
-      <a class="btn secondary" id="hostBtn" href="/host">Host a game</a>
-    </div>
+      <p class="sub" id="hostSub">Start a session for your group (4+ players).</p>
+      <a class="btn ghost" id="hostBtn" href="/host">Host a game</a>
+    </section>
 
-    <div class="card">
+    <section class="card">
       <h2>Your stats</h2>
-      <div id="stats" class="muted">Loading…</div>
-      <div id="nemesis" class="muted" style="margin-top:12px"></div>
-      <a class="btn secondary" href="/leaderboard">Leaderboard</a>
-      <a class="btn secondary" href="/friends" id="friendsBtn">Friends</a>
-    </div>
+      <p class="empty" id="stats">Loading…</p>
+      <div class="nemesis" id="nemesis" hidden></div>
+      <a class="btn ghost" href="/leaderboard">See the full leaderboard</a>
+      <a class="btn ghost" href="/friends" id="friendsBtn">Friends</a>
+    </section>
 
-    <p id="msg"></p>
+    <p id="msg" role="status"></p>
   </main>
 
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
+  <script src="buzz.js"></script>
   <script>
     const $ = id => document.getElementById(id);
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+    Buzz.bee($("bee"));
+    $("bee").classList.add("bz-float");
 
     async function init() {
       // 1. Must be logged in
@@ -89,9 +168,10 @@
 
       // 3. Guests can play but not host
       if (profile?.is_guest) {
+        $("guestTag").hidden = false;
         $("hostSub").textContent = "Guests can't host. Make an account to start your own games.";
         $("hostBtn").textContent = "Make an account";
-        $("hostBtn").href = "/login";
+        $("hostBtn").href = "/login?tab=signup&next=/dashboard";
       }
 
       // 4. Already in a game? Show a shortcut back to it.
@@ -109,7 +189,7 @@
       // 5. Stats (guests aren't on the leaderboard)
       const { data: s } = await sb.from("leaderboard").select("*").eq("id", me).maybeSingle();
       if (!s) {
-        $("stats").textContent = profile?.is_guest ? "Guest stats aren't saved." : "No finished games yet. Go play one!";
+        $("stats").textContent = profile?.is_guest ? "Guest stats aren't saved. Make an account to keep them." : "No finished games yet. Go play one!";
       } else {
         const sol = Number(s.total_sol ?? 0);
         const grid = el("div", "stats");
@@ -120,8 +200,7 @@
           ["SOL won / lost", `${sol >= 0 ? "+" : ""}${sol.toFixed(3)}`, sol >= 0 ? "up" : "down"],
         ]) {
           const box = el("div", "stat");
-          const b = el("b", cls || "", value);
-          box.append(b, el("span", "muted", label));
+          box.append(el("b", cls || "", value), el("span", "", label));
           grid.append(box);
         }
         $("stats").replaceWith(grid);
@@ -137,7 +216,10 @@
         if (count) $("friendsBtn").textContent = `Friends (${count} new request${count === 1 ? "" : "s"})`;
       }
 
-      if (nem) $("nemesis").textContent = `😈 Nemesis: ${nem.opponent} (you're ${nem.wins}–${nem.losses} against them)`;
+      if (nem) {
+        $("nemesis").textContent = `Nemesis: ${nem.opponent}. You're ${nem.wins}–${nem.losses} against them.`;
+        $("nemesis").hidden = false;
+      }
     }
 
     function showActive(title, sub, button, href) {
@@ -152,7 +234,7 @@
     $("joinForm").onsubmit = e => {
       e.preventDefault();
       const code = $("code").value.trim().toUpperCase();
-      if (!/^[A-Z0-9]{4,12}$/.test(code)) { $("msg").textContent = "Codes are letters and numbers, like 4F2A9C."; return; }
+      if (!/^[A-Z0-9]{4,12}$/.test(code)) { $("msg").textContent = "Game PINs are letters and numbers, like 4F2A9C."; return; }
       location.href = "/join?room=" + code;
     };
 
