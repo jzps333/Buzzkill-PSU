@@ -156,7 +156,7 @@
       <p class="sub">You'll get a game PIN. Friends type it on their phones at buzzkill.study. You need 4 or more players to start.</p>
       <div class="modes">
         <button class="mode on" data-mode="solo"><b>🙋 Solo</b><span>Everyone for themselves</span></button>
-        <button class="mode" data-mode="teams"><b>👥 Teams</b><span>Honey vs Stingers. One pickup busts the whole team.</span></button>
+        <button class="mode" data-mode="teams"><b>👥 Teams</b><span>Honey vs Stingers: 2v2, 3v3, 4v4… One pickup busts the whole team.</span></button>
       </div>
       <button class="btn" id="newGame">New game</button>
     </section>
@@ -257,11 +257,13 @@
     async function loadGame() {
       const { data } = await sb.from("games").select("*").eq("code", code).maybeSingle();
       if (data) game = data;
-      showMode();
+      updateCount();
     }
     function showMode() {
       $("modeBox").textContent = game.mode === "teams"
-        ? "👥 Teams: players are split into Honey and Stingers when you start. One pickup busts the whole team."
+        ? (status === "waiting"
+            ? `👥 Teams · ${matchup(players.length)}. Even teams only (4 players = 2v2, 6 = 3v3…), picked at random when you start. One pickup busts the whole team.`
+            : `👥 Teams · ${matchup(players.length)}. One pickup busts the whole team.`)
         : "🙋 Solo: everyone for themselves.";
       $("teamsBox").hidden = !(status === "live" && game.mode === "teams");
     }
@@ -352,6 +354,9 @@
       if (game.mode === "teams") {
         const tot = { 1: 0, 2: 0 };
         players.forEach(p => { if (p.team) tot[p.team] += p.pickups; });
+        const size = t => players.filter(p => p.team === t).length;
+        $("team1").firstChild.textContent = `🍯 Honey (${size(1)})`;
+        $("team2").firstChild.textContent = `🐝 Stingers (${size(2)})`;
         $("team1").querySelector("b").textContent = tot[1];
         $("team2").querySelector("b").textContent = tot[2];
         $("team1").classList.toggle("lead", tot[1] < tot[2]);
@@ -360,14 +365,23 @@
     }
 
     // Start only unlocks at 4+ players
+    // Teams are always even: 4 players = 2v2, 6 = 3v3, 8 = 4v4...
+    const matchup = n => n >= 4 && n % 2 === 0 ? `${n / 2}v${n / 2}`
+                       : n >= 4 ? `${(n + 1) / 2}v${(n + 1) / 2} with 1 more` : "2v2 needs 4 players";
+
     function updateCount() {
-      const n = players.length, need = 4 - n;
+      const n = players.length, teams = game.mode === "teams";
+      const need = Math.max(4 - n, teams ? n % 2 : 0);     // teams with an odd number: 1 more (or 1 less)
       $("countText").textContent = `${n} player${n === 1 ? "" : "s"}`;
-      $("countHint").textContent = status !== "waiting" ? "" : need > 0 ? `${need} more to start` : "Ready to start";
+      $("countHint").textContent = status !== "waiting" ? "" : need > 0 ? `${need} more to start` : teams ? `Ready: ${matchup(n)}` : "Ready to start";
       $("barFill").style.width = Math.min(100, n / 4 * 100) + "%";
       $("bar").classList.toggle("full", need <= 0);
       $("startBtn").disabled = need > 0;
-      $("startBtn").textContent = need > 0 ? `Need ${need} more player${need === 1 ? "" : "s"} to start` : "Start game";
+      $("startBtn").textContent =
+        need <= 0          ? (teams ? `Start ${matchup(n)}` : "Start game") :
+        teams && n >= 4    ? `Need 1 more for ${matchup(n + 1)} (or 1 leaves)` :
+                             `Need ${need} more player${need === 1 ? "" : "s"} to start`;
+      showMode();
     }
 
     // Sound plays when your alarm is on and you're NOT shaking.
@@ -422,6 +436,7 @@
 
     // ---------- AI roasts: Gemini writes one per pickup, ElevenLabs voices it (the "roast" Supabase function) ----------
     // One roast per pickup (saves credits). In teams, the whole busted team shares the roast of whoever slipped.
+    const recentRoasts = [];          // last few roast lines, sent along so the next one is different
     const roasts = {};                 // bust key -> "loading" | { url (mp3), text }
     const voice = new Audio();
     let playingFor = null;             // whose roast is playing right now
@@ -439,14 +454,17 @@
         const r = await fetch(`${SUPABASE_URL}/functions/v1/roast`, {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
-          body: JSON.stringify({ game: code, user_id: userId }),
+          body: JSON.stringify({ game: code, user_id: userId, avoid: recentRoasts.slice(-6) }),   // so it never repeats itself
           signal: AbortSignal.timeout(12000),
         });
         if (!r.ok) throw new Error(r.status);
         if ((r.headers.get("content-type") || "").includes("audio")) {
           roasts[key] = { url: URL.createObjectURL(await r.blob()), text: decodeURIComponent(r.headers.get("X-Roast-Text") || "") };
+          if (roasts[key].text) recentRoasts.push(roasts[key].text);
         } else {
-          roasts[key] = { text: (await r.json()).text };        // no voice credits left: the laptop reads the text
+          const j = await r.json();
+          roasts[key] = { text: j.text };                         // no voice: the laptop reads the text
+          if (j.problems?.length) $("msg").textContent = "AI roast problem: " + j.problems.join(" | ");
         }
       } catch {
         roasts[key] = {};                                         // function down: built-in roasts
@@ -486,9 +504,18 @@
     }, 500);
 
     const fallback = p => ROASTS[Math.floor(Math.random() * ROASTS.length)](p.profiles?.username ?? "Someone");
+    // Backup voice when ElevenLabs isn't available: the most natural-sounding voice this browser has
+    function bestVoice() {
+      const en = speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"));
+      return en.find(v => /natural|neural|premium|enhanced/i.test(v.name))
+          || en.find(v => /google us english|samantha|daniel|aria|jenny|guy/i.test(v.name))
+          || en.find(v => v.lang === "en-US") || en[0] || null;
+    }
     function speak(text) {
       speechSynthesis.cancel();
-      speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      const u = new SpeechSynthesisUtterance(text);
+      u.voice = bestVoice();
+      speechSynthesis.speak(u);
     }
 
     // ---------- Where roasts play: the Pi's Bluetooth speaker (hardware/speaker.py), this laptop, or off ----------

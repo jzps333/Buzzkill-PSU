@@ -10,13 +10,14 @@ What it does, about twice a second:
   2. Reads that game's players from `results`.
   3. Plays a roast on loop while anyone has alarm_on and is NOT shaking. Otherwise silent.
      Each new pickup gets one AI roast (the "roast" Supabase function: Gemini writes it, ElevenLabs says it).
-     No AI roast? It reads the text with espeak-ng, or one of the built-in roasts.
+     No AI voice? It reads the text with espeak-ng, or one of the built-in roasts.
 Every 5 seconds it checks in (speakers.last_seen) so the host page shows "Speaker online".
 
 Settings come from hardware/.env (see .env.example). Needs `requests`, `espeak-ng` and `mpg123`.
 """
 import os
 import random
+import re
 import subprocess
 import sys
 import tempfile
@@ -97,6 +98,7 @@ def current_game():
 
 # ---------- AI roasts: one per pickup ----------
 # In teams, a pickup busts the whole team, and they all share the roast of whoever slipped (alarm_cause).
+recent = []      # last few roast lines, sent along so the next roast is different
 roasts = {}      # bust key -> "loading" | {"mp3": path, "text": ...} | {"text": ...} | {} (failed: built-in roast)
 
 
@@ -112,7 +114,7 @@ def bust_key(p, players):
 def fetch_roast(key, code, user_id):
     try:
         r = requests.post(f"{BASE}/functions/v1/roast", headers=HEADERS,
-                          json={"game": code, "user_id": user_id}, timeout=15)
+                          json={"game": code, "user_id": user_id, "avoid": recent[-6:]}, timeout=15)
         r.raise_for_status()
         text = unquote(r.headers.get("X-Roast-Text", ""))
         if r.headers.get("content-type", "").startswith("audio"):
@@ -121,10 +123,27 @@ def fetch_roast(key, code, user_id):
             roasts[key] = {"mp3": str(path), "text": text}
         else:
             roasts[key] = {"text": r.json().get("text")}      # no voice credits left: espeak reads it
+        if roasts[key].get("text"):
+            recent.append(roasts[key]["text"])
         log("AI roast:", roasts[key].get("text"))
     except Exception as e:
         log("AI roast failed, using a built-in one:", e)
         roasts[key] = {}
+
+
+def ai_voice(text):
+    """Any short line in the ElevenLabs roast voice (startup, test). Returns an mp3 path, or None."""
+    if not AI_ROASTS:
+        return None
+    try:
+        r = requests.post(f"{BASE}/functions/v1/roast", headers=HEADERS, json={"say": text}, timeout=15)
+        if r.ok and r.headers.get("content-type", "").startswith("audio"):
+            path = ROAST_DIR / f"line-{abs(hash(text))}.mp3"
+            path.write_bytes(r.content)
+            return str(path)
+    except requests.RequestException as e:
+        log("AI voice failed, using espeak:", e)
+    return None
 
 
 def ask_for_roast(key, code, user_id):
@@ -170,6 +189,16 @@ class Voice:
         log("Saying:", text)
         self._run(TTS_CMD + [text], who)
 
+    def line(self, text):
+        """Say one of the speaker's own lines in the AI voice (espeak if that's not available), and wait."""
+        mp3 = ai_voice(text)
+        text = re.sub(r"\s*\[[^\]]*\]\s*", " ", text).strip()     # [tags] are for the AI voice only
+        if mp3:
+            self.play(mp3, text)
+        else:
+            self.say(text)
+        self.proc.wait()
+
     def play(self, mp3, text, who=None):
         try:
             self._run(PLAY_CMD + [mp3], who)
@@ -189,16 +218,14 @@ def main():
     voice = Voice()
 
     if "--test" in sys.argv:
-        voice.say(ROASTS[0].format(n="Test"))
-        voice.proc.wait()
+        voice.line(ROASTS[0].format(n="Test"))
         return
 
     if BT_MAC:
         threading.Thread(target=bluetooth_loop, daemon=True).start()
 
     log(f"Speaker '{SPEAKER_ID}' running. Pick it on the host page to use it.")
-    voice.say("Buzzkill speaker ready.")
-    voice.proc.wait()
+    voice.line("[mischievously] Buzzkill speaker ready. Phones down, everyone.")
 
     code = None
     last_heartbeat = 0

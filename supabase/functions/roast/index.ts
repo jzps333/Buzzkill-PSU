@@ -9,14 +9,17 @@
 //
 // Secrets to set in Supabase -> Edge Functions -> Secrets:
 //   GEMINI_API_KEY, ELEVENLABS_API_KEY            (required)
-//   ELEVENLABS_VOICE_ID, GEMINI_MODEL              (optional)
+//   ELEVENLABS_VOICE_ID, ELEVENLABS_MODEL, GEMINI_MODEL   (optional)
+// The Pi can also send { "say": "some text" } to get any short line in the same voice (startup, test).
 // Deploy with "Verify JWT" OFF: the function checks callers itself, so the Pi's secret key works too.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const ALLOWED_ORIGINS = ["https://www.buzzkill.study", "https://buzzkill.study", "https://buzzkill-psu.vercel.app"];
 const VOICE = Deno.env.get("ELEVENLABS_VOICE_ID") ?? "JBFqnCBsd6RMkjVDRZzb";      // "George"
-const MODELS = [Deno.env.get("GEMINI_MODEL"), "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"]
+// "-latest" names always point at Google's current model, so they don't break when old ones shut down
+// Fastest first: Flash-Lite writes a 1-line roast in well under a second
+const MODELS = [Deno.env.get("GEMINI_MODEL"), "gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3-flash-preview"]
   .filter(Boolean) as string[];
 
 const FALLBACKS = [
@@ -50,73 +53,150 @@ const json = (req: Request, body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors(req), "Content-Type": "application/json" } });
 
 // ---------- 1. Gemini writes the roast ----------
-async function writeRoast(facts: string, name: string): Promise<string> {
+let problems: string[] = [];        // why the AI part failed (sent back to the host so we can fix it)
+
+// A different style and angle every time, so no two roasts sound alike
+const STYLES = [
+  "a hyped sports commentator calling a terrible play",
+  "a calm nature documentary narrator watching a creature fail",
+  "a deeply disappointed gym coach",
+  "a breaking-news anchor with urgent news",
+  "a cheesy game show host announcing a loser",
+  "a dramatic movie trailer voice",
+  "a stern courtroom judge reading the sentence",
+  "an airport announcer making a public announcement",
+  "a motivational speaker who has completely given up",
+  "a Shakespearean actor delivering a tragedy",
+  "a smug villain who saw this coming",
+  "a sarcastic tour guide pointing out a landmark",
+];
+const ANGLES = [
+  "how fast they cracked",
+  "how they compare to everyone else at the table",
+  "what they were probably looking at on the phone",
+  "their pickup count and where it is heading",
+  "the rest of the table now judging them",
+  "the grade they are about to get",
+  "how weak their willpower is",
+];
+const SOUNDS = ["Hahaha", "Ha!", "Ooooh", "Yikes", "Pfft", "Wow", "Bzzzz", "Ding ding ding", "Boooo", "Tsk tsk tsk", "Oof", "Mwahaha"];
+const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+
+async function writeRoast(facts: string, name: string, avoid: string[] = []): Promise<string> {
   const key = Deno.env.get("GEMINI_API_KEY");
+  const v3 = VOICES[0].model.includes("v3");
   const prompt = `You are Buzz, a savage, sarcastic bee who roasts college students for touching their phone during a group study session. A speaker reads your line out loud to the whole table.
 
 Write ONE roast, at most 25 words, using their name.
-Be brutal and funny about their focus, their phone habit and the scoreboard. Compare them to the others when it stings.
+This time, talk like ${pick(STYLES)}, and focus on ${pick(ANGLES)}.
+Be brutal and funny. Use the facts below.
 Rules: PG-13, no swear words, no slurs. Never mention race, gender, religion, sexuality, body, looks, health, money or family.
-Plain spoken text only: no quotes, emojis, hashtags or stage directions.
-
+Plain spoken text: no quotes, emojis or hashtags.
+Sound effects: write one or two spoken sounds as words, like ${SOUNDS.slice().sort(() => Math.random() - 0.5).slice(0, 4).join(", ")}. Put one at the start or the end.
+${v3 ? `You may also add one voice tag that changes HOW it's said (not read out): ${TAGS.map(t => `[${t}]`).join(" ")}
+` : ""}Example (do not copy): Ooooh, Alex. Two minutes. A new world record in giving up. Hahaha!
+${avoid.length ? `Do NOT reuse the jokes or wording of these earlier roasts:\n${avoid.map(a => "- " + a).join("\n")}\n` : ""}
 Facts:
 ${facts}`;
 
   if (key) {
     for (const model of MODELS) {
       try {
-        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        // Thinking makes Gemini slow (seconds). A one-line roast doesn't need it, so ask for as little as possible.
+        const ask = (thinking: boolean) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": key },
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 1.1, maxOutputTokens: 120 },
+            generationConfig: { temperature: 1.3, maxOutputTokens: 2048,   // room in case it thinks anyway
+                                ...(thinking ? { thinkingConfig: { thinkingLevel: "minimal" } } : {}) },
           }),
         });
-        if (!r.ok) continue;                                   // model not available -> try the next one
+        let r = await ask(true);
+        if (r.status === 400) r = await ask(false);              // this model doesn't take that setting
+        if (!r.ok) {                                           // model not available -> try the next one
+          const why = `Gemini ${model}: ${r.status} ${(await r.text()).slice(0, 150)}`;
+          console.log(why); problems.push(why);
+          continue;
+        }
         const data = await r.json();
-        const text = (data?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? "").join("")
+        const text = (data?.candidates?.[0]?.content?.parts ?? []).filter((p: { thought?: boolean }) => !p.thought).map((p: { text?: string }) => p.text ?? "").join("")
           .replace(/["*#_`]/g, "").replace(/\s+/g, " ").trim();
-        if (text) return text.slice(0, 240);
-      } catch { /* try the next model */ }
+        if (plain(text).length > 5) return text.slice(0, 300);
+        problems.push(`Gemini ${model}: empty answer (${data?.candidates?.[0]?.finishReason ?? "?"})`);
+      } catch (e) { problems.push(`Gemini ${model}: ${e}`); }
     }
   }
+  if (!key) problems.push("GEMINI_API_KEY secret is missing");
   return FALLBACKS[Math.floor(Math.random() * FALLBACKS.length)](name);   // no key / Gemini down
 }
 
 // ---------- 2. ElevenLabs speaks it ----------
+// Eleven v3 is the most human-sounding model: it acts out the [tags] (sighs, laughs, sarcasm).
+// If v3 fails (not on your plan, busy), Flash v2.5 says it instead (fast, but flatter), with the tags removed.
+const TAGS = ["sarcastic", "laughs", "chuckles", "sighs", "exasperated", "gasps", "mischievously", "whispers", "dramatically"];
+const plain = (text: string) => text.replace(/\[[^\]]*(\]|$)/g, "").replace(/\s+/g, " ").trim();   // tags out (for display / Flash)
+const onlyKnownTags = (text: string) =>
+  text.replace(/\[[^\]]*$/, "").replace(/\[([^\]]*)\]/g, (m, t) => TAGS.includes(t.trim().toLowerCase()) ? `[${t.trim().toLowerCase()}]` : "").replace(/\s+/g, " ").trim();
+
+// Default is Flash v2.5: made for speed (~0.1 s), so the roast lands right after the pickup.
+// Want the slower, more dramatic voice that acts out [laughs]/[sighs]? Set the secret ELEVENLABS_MODEL = eleven_v3.
+const FLASH = { model: "eleven_flash_v2_5", settings: { stability: 0.35, similarity_boost: 0.8, style: 0.4, use_speaker_boost: true } };
+const VOICES = (Deno.env.get("ELEVENLABS_MODEL") ?? "").includes("v3")
+  // v3 stability: 0 = Creative, 0.5 = Natural, 1 = Robust. Natural acts out the tags without going off script.
+  ? [{ model: "eleven_v3", settings: { stability: 0.5, similarity_boost: 0.8 } }, FLASH]
+  : [FLASH];
+
 async function speak(text: string): Promise<ArrayBuffer | null> {
   const key = Deno.env.get("ELEVENLABS_API_KEY");
-  if (!key) return null;
-  try {
-    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE}?output_format=mp3_44100_128`, {
-      method: "POST",
-      headers: { "xi-api-key": key, "Content-Type": "application/json", Accept: "audio/mpeg" },
-      body: JSON.stringify({ text, model_id: Deno.env.get("ELEVENLABS_MODEL") ?? "eleven_flash_v2_5" }),
-    });
-    return r.ok ? await r.arrayBuffer() : null;
-  } catch {
-    return null;
+  if (!key) { problems.push("ELEVENLABS_API_KEY secret is missing"); return null; }
+  for (const v of VOICES) {
+    const line = v.model.includes("v3") ? onlyKnownTags(text) : plain(text);
+    if (!plain(line)) { problems.push("Roast text was empty"); return null; }
+    try {
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE}?output_format=mp3_44100_128`, {
+        method: "POST",
+        headers: { "xi-api-key": key, "Content-Type": "application/json", Accept: "audio/mpeg" },
+        body: JSON.stringify({ text: line, model_id: v.model, voice_settings: v.settings }),
+      });
+      if (r.ok) return await r.arrayBuffer();
+      const why = `ElevenLabs ${v.model}: ${r.status} ${(await r.text()).slice(0, 200)}`;
+      console.log(why); problems.push(why);
+    } catch (e) {
+      problems.push(`ElevenLabs ${v.model}: ${e}`);
+    }
   }
+  return null;
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(req) });
   if (req.method !== "POST") return json(req, { error: "POST only" }, 405);
 
+  problems = [];
   const body = await req.json().catch(() => ({}));
+  const secrets = secretKeys();
+  const isPi = secrets.includes(req.headers.get("apikey") ?? "-");
+
+  // ---------- The Pi's own lines ("Buzzkill speaker ready"), in the same voice ----------
+  if (typeof body.say === "string") {
+    if (!isPi) return json(req, { error: "Only the brick can do this" }, 403);
+    const text = body.say.slice(0, 200);
+    const audio = await speak(text);
+    if (!audio) return json(req, { text: plain(text) });
+    return new Response(audio, { headers: { ...cors(req), "Content-Type": "audio/mpeg", "X-Roast-Text": encodeURIComponent(plain(text)) } });
+  }
+
   const game = String(body.game ?? "").toUpperCase();
   const userId = String(body.user_id ?? "");
   if (!/^[A-Z0-9]{4,12}$/.test(game) || !/^[0-9a-f-]{36}$/.test(userId)) return json(req, { error: "Bad request" }, 400);
 
-  const secrets = secretKeys();
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, secrets[0] ?? "", { auth: { persistSession: false } });
 
   // ---------- 3. Who's asking? The Pi (secret key) or the game's host (login token) ----------
   const { data: g } = await admin.from("games").select("code, status, mode, host_id, start_time").eq("code", game).maybeSingle();
   if (!g) return json(req, { error: "No such game" }, 404);
 
-  const isPi = secrets.includes(req.headers.get("apikey") ?? "-");
   if (!isPi) {
     const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
     const { data: u } = token ? await admin.auth.getUser(token) : { data: { user: null } };
@@ -147,11 +227,12 @@ Deno.serve(async (req) => {
   }
 
   // ---------- 5. Write it, speak it ----------
-  const text = await writeRoast(facts, name);
+  const avoid = Array.isArray(body.avoid) ? body.avoid.filter((a: unknown) => typeof a === "string").slice(-6).map((a: string) => a.slice(0, 200)) : [];
+  const text = await writeRoast(facts, name, avoid);
   const audio = await speak(text);
-  if (!audio) return json(req, { text });                      // no voice: caller reads the text itself
+  if (!audio) return json(req, { text: plain(text), problems });   // no voice: caller reads the text itself
 
   return new Response(audio, {
-    headers: { ...cors(req), "Content-Type": "audio/mpeg", "X-Roast-Text": encodeURIComponent(text), "Cache-Control": "no-store" },
+    headers: { ...cors(req), "Content-Type": "audio/mpeg", "X-Roast-Text": encodeURIComponent(plain(text)), "Cache-Control": "no-store" },
   });
 });
