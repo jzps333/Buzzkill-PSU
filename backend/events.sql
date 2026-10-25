@@ -7,7 +7,7 @@ create table public.events (
   id          bigint generated always as identity primary key,
   game        text not null references public.games (code) on delete cascade,
   user_id     uuid not null default auth.uid() references public.profiles (id) on delete cascade,
-  type        text not null check (type in ('join', 'pickup', 'left_page', 'shake')),
+  type        text not null check (type in ('join', 'pickup', 'left_page', 'shake', 'shake_stop')),
   created_at  timestamptz not null default now()
 );
 

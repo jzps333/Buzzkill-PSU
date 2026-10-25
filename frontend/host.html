@@ -55,7 +55,7 @@
     ];
 
     let code = null, status = null, players = [];
-    const roasting = new Set();       // people whose alarm is on
+    const lastShakeSeen = {};         // user_id -> when we last heard they were shaking (this laptop's clock)
 
     // ---------- 1. Must be logged in, not as a guest ----------
     async function init() {
@@ -106,33 +106,11 @@
     // ---------- 3. Player list (names are set with textContent, so they can't run code) ----------
     async function loadPlayers() {
       const { data } = await sb.from("results")
-        .select("user_id, pickups, alarm_on, shake_secs_needed, shake_secs_done, profiles(username)")
+        .select("user_id, pickups, alarm_on, is_shaking, shake_secs_needed, shake_secs_done, profiles(username)")
         .eq("game", code);
       players = data || [];
-
-      const ul = $("players");
-      ul.replaceChildren(...players.map(p => {
-        const li = document.createElement("li");
-        const name = document.createElement("span");
-        const info = document.createElement("span");
-        name.textContent = p.profiles?.username ?? "player";
-        info.textContent = p.alarm_on
-          ? `🚨 shaking: ${Math.max(0, Math.ceil(p.shake_secs_needed - p.shake_secs_done))}s left`
-          : `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`;
-        li.append(name, info);
-        return li;
-      }));
-      if (!players.length) ul.innerHTML = '<li class="muted">Nobody yet</li>';
-
-      // Speak a roast when someone's alarm turns on
-      for (const p of players) {
-        if (p.alarm_on && !roasting.has(p.user_id)) {
-          roasting.add(p.user_id);
-          if ($("voice").checked) speak(ROASTS[Math.floor(Math.random() * ROASTS.length)](p.profiles?.username ?? "Someone"));
-        }
-        if (!p.alarm_on) roasting.delete(p.user_id);
-      }
-      if (!roasting.size) speechSynthesis.cancel();
+      for (const p of players) if (p.is_shaking) lastShakeSeen[p.user_id] = Date.now();
+      renderPlayers();
 
       // Start only unlocks at 4+ players
       const need = 4 - players.length;
@@ -140,6 +118,42 @@
       $("startBtn").style.opacity = need > 0 ? 0.4 : 1;
       $("startBtn").textContent = need > 0 ? `Need ${need} more player${need === 1 ? "" : "s"} to start` : "Start game";
     }
+
+    // Sound plays when your alarm is on and you're NOT shaking.
+    // If we haven't heard a shake in 2 seconds (phone died, lost signal), count it as stopped.
+    function soundOn(p) {
+      const shakingNow = p.is_shaking && Date.now() - (lastShakeSeen[p.user_id] || 0) < 2000;
+      return p.alarm_on && !shakingNow;
+    }
+
+    function renderPlayers() {
+      const ul = $("players");
+      ul.replaceChildren(...players.map(p => {
+        const li = document.createElement("li");
+        const name = document.createElement("span");
+        const info = document.createElement("span");
+        const left = Math.max(0, Math.ceil(p.shake_secs_needed - p.shake_secs_done));
+        name.textContent = p.profiles?.username ?? "player";
+        info.textContent = !p.alarm_on ? `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`
+          : soundOn(p) ? `🚨 BUSTED · ${left}s of shaking left`
+          : `🫨 shaking · ${left}s left`;
+        li.append(name, info);
+        return li;
+      }));
+      if (!players.length) ul.innerHTML = '<li class="muted">Nobody yet</li>';
+    }
+
+    // ---------- Roast loop: keeps talking while anyone's sound is on, silent while they shake ----------
+    setInterval(() => {
+      if (!code) return;
+      renderPlayers();
+      const loud = players.filter(soundOn);
+      if (!loud.length || !$("voice").checked) { speechSynthesis.cancel(); return; }
+      if (!speechSynthesis.speaking) {
+        const p = loud[Math.floor(Math.random() * loud.length)];
+        speak(ROASTS[Math.floor(Math.random() * ROASTS.length)](p.profiles?.username ?? "Someone"));
+      }
+    }, 500);
 
     function speak(text) {
       speechSynthesis.cancel();

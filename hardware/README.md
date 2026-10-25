@@ -22,10 +22,17 @@ sb.rpc("finish_game", {"p_code": code}).execute()
 ```
 
 **2. Listen for alarms → play sounds.** Subscribe to Realtime `UPDATE`s on the `results` table
-(filter `game=eq.CODE`). Each row has `user_id`, `alarm_on`, `pickups`, `shake_secs_needed`, `shake_secs_done`.
+(filter `game=eq.CODE`). Each row has `user_id`, `alarm_on`, `is_shaking`, `pickups`, `shake_secs_needed`, `shake_secs_done`.
 
-- `alarm_on` turns **true** → play a roast on loop (look up the name in `profiles.username`)
-- `alarm_on` turns **false** → stop it (they shook it off)
+**Play the roast on loop while `alarm_on` is true AND `is_shaking` is false.** Otherwise, stay silent.
+
+- Pickup → `alarm_on = true` → sound plays
+- They start shaking → `is_shaking = true` → pause the sound
+- They stop before their time is up → `is_shaking = false` → sound plays again
+- They shook long enough → `alarm_on = false` → sound off for good
+
+Safety rule: while someone is shaking, their row updates about twice a second. If you get no update
+for 2 seconds while `is_shaking` is still true (their phone died or lost signal), treat it as stopped and play the sound.
 
 **3. Players joining:** nothing to do. Phones handle it, and new rows show up in `results`.
 

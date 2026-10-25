@@ -94,7 +94,8 @@
       alarmOn = r.alarm_on && gameStatus === "live";
       if (alarmOn) {
         const left = Math.max(0, Math.ceil(r.shake_secs_needed - r.shake_secs_done));
-        show("🚨", "BUSTED", `Keep shaking! ${left}s left. Stop and the clock pauses.`);
+        if (r.is_shaking) show("🫨", "Shaking… sound paused", `${left}s left. Don't stop or it comes back!`);
+        else              show("🚨", "BUSTED", `Shake it to shut it up! ${left}s of shaking left.`);
       } else if (gameStatus === "live") {
         show("😮‍💨", "Alarm off", `Pickup #${r.pickups} counted. Put it back face down.`);
       }
@@ -117,6 +118,15 @@
 
     // ---------- 4. Motion: pickup + shake ----------
     let baseline = null, isDown = false, lastPickup = 0, shakeTimes = [];
+    let shaking = false, lastJolt = 0;
+
+    // 4d. Stopped shaking? No hard jolt for 1.2 seconds = you stopped, so the sound comes back.
+    setInterval(() => {
+      if (shaking && Date.now() - lastJolt > 1200) {
+        shaking = false;
+        if (alarmOn) send("shake_stop");
+      }
+    }, 300);
 
     function onMotion(e) {
       const g = e.accelerationIncludingGravity;
@@ -145,10 +155,13 @@
 
       // 4c. Shake: while your alarm is on, send "shake" about twice a second as long as you keep shaking.
       //     The database turns that into shaking time: 30s for your 1st pickup, 60s for the 2nd, and so on.
+      //     While you shake, the sound pauses. Stop early and it comes back (see 4d).
       const a = e.acceleration;
       const strength = (a && a.x !== null) ? Math.hypot(a.x, a.y, a.z) : Math.abs(Math.hypot(...v) - 9.8);
       if (strength > 18 && alarmOn) {
         const now = Date.now();
+        lastJolt = now;
+        shaking = true;
         if (now - (shakeTimes[0] || 0) > 400) {           // at most ~2 messages per second
           shakeTimes = [now];
           send("shake");

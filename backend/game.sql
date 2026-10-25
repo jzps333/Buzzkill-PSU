@@ -13,6 +13,7 @@ alter table public.results
   add column alarm_on        boolean     not null default false,  -- roast is playing for this person
   add column shake_secs_needed numeric   not null default 0,      -- seconds of shaking to turn it off (30 per pickup)
   add column shake_secs_done   numeric   not null default 0,      -- seconds shaken so far
+  add column is_shaking        boolean   not null default false,  -- shaking right now = sound paused
   add column first_pickup_at timestamptz,                         -- for "First to Fold"
   add column last_shake_at   timestamptz;                         -- stops shake spamming
 
@@ -91,7 +92,7 @@ begin
   where code = p_code and status = 'live';
   if not found then return; end if;
 
-  update public.results set alarm_on = false where game = p_code;
+  update public.results set alarm_on = false, is_shaking = false where game = p_code;
 
   select coalesce(sum(least(pickups * 0.02, sol_in)), 0) into pot
   from public.results where game = p_code and sol_in > 0;
@@ -132,13 +133,14 @@ begin
       alarm_on          = true,
       shake_secs_needed = 30 * (pickups + 1),
       shake_secs_done   = 0,
+      is_shaking        = false,
       last_shake_at     = null,
       first_pickup_at   = coalesce(first_pickup_at, now())
     where game = new.game and user_id = new.user_id and not alarm_on;   -- already roasting? don't count twice
 
   -- SHAKE: the phone sends this about twice a second while you shake.
   --   Time between two shakes counts as shaking time (max 1 second each).
-  --   Stop for more than 1.5 seconds and the clock pauses until you start again.
+  --   While shaking, the sound pauses (is_shaking = true).
   elsif new.type = 'shake' and g = 'live' then
     update public.results set
       shake_secs_done = shake_secs_done + case
@@ -146,14 +148,20 @@ begin
           then least(extract(epoch from now() - last_shake_at), 1)
         else 0
       end,
+      is_shaking    = true,
       last_shake_at = now()
     where game = new.game and user_id = new.user_id and alarm_on
       and (last_shake_at is null or last_shake_at < now() - interval '150 milliseconds');
 
-    -- Shook long enough? Alarm off.
-    update public.results set alarm_on = false
+    -- Shook long enough? Alarm off for good.
+    update public.results set alarm_on = false, is_shaking = false
     where game = new.game and user_id = new.user_id and alarm_on
       and shake_secs_done >= shake_secs_needed;
+
+  -- SHAKE_STOP: they stopped shaking before the timer was up. Sound comes back.
+  elsif new.type = 'shake_stop' and g = 'live' then
+    update public.results set is_shaking = false
+    where game = new.game and user_id = new.user_id and alarm_on;
   end if;
 
   return new;
