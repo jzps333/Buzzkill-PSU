@@ -54,7 +54,7 @@
       n => `Wow ${n}. That notification was not important.`,
     ];
 
-    let code = null, status = null, players = [], confirmStart = false;
+    let code = null, status = null, players = [];
     const roasting = new Set();       // people whose alarm is on
 
     // ---------- 1. Must be logged in, not as a guest ----------
@@ -133,8 +133,12 @@
         if (!p.alarm_on) roasting.delete(p.user_id);
       }
       if (!roasting.size) speechSynthesis.cancel();
-      confirmStart = false;
-      $("startBtn").textContent = "Start game";
+
+      // Start only unlocks at 4+ players
+      const need = 4 - players.length;
+      $("startBtn").disabled = need > 0;
+      $("startBtn").style.opacity = need > 0 ? 0.4 : 1;
+      $("startBtn").textContent = need > 0 ? `Need ${need} more player${need === 1 ? "" : "s"} to start` : "Start game";
     }
 
     function speak(text) {
@@ -142,13 +146,9 @@
       speechSynthesis.speak(new SpeechSynthesisUtterance(text));
     }
 
-    // ---------- 4. Start (asks twice if fewer than 4 players) ----------
+    // ---------- 4. Start (4+ players only; the database also refuses fewer) ----------
     $("startBtn").onclick = async () => {
-      if (players.length < 4 && !confirmStart) {
-        confirmStart = true;
-        $("startBtn").textContent = `Only ${players.length} player${players.length === 1 ? "" : "s"}. Tap again to start anyway`;
-        return;
-      }
+      if (players.length < 4) return;
       const { error } = await sb.rpc("start_game", { p_code: code });
       if (error) $("msg").textContent = error.message; else setStatus("live");
     };

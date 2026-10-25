@@ -52,13 +52,21 @@ end;
 $$;
 
 
--- 4. START A GAME
+-- 4. START A GAME (needs at least 4 players, always, for everyone including the Pi)
 create or replace function public.start_game(p_code text)
 returns void
 language plpgsql security definer set search_path = ''
 as $$
+declare
+  players int;
 begin
   if not public.can_host(p_code) then raise exception 'Only the host can start this game'; end if;
+
+  select count(*) into players from public.results where game = p_code;
+  if players < 4 then
+    raise exception 'Need at least 4 players to start (you have %)', players;
+  end if;
+
   update public.games set status = 'live', start_time = now()
   where code = p_code and status = 'waiting';
 end;

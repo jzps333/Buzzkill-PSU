@@ -12,7 +12,7 @@ The Pi only needs to do 3 things, using the secret key in `.env`:
 | Touch | Call | What happens |
 |---|---|---|
 | Tap (no game) | `create_game()` → returns a code like `4F2A9C` | Write `https://www.buzzkill.study/join?room=CODE` to the NFC tag |
-| Tap (waiting) | `start_game(p_code)` | Game goes live |
+| Tap (waiting) | `start_game(p_code)` | Game goes live. Fails with an error if fewer than 4 players joined, so play a "need more players" sound |
 | Hold 3 s | `finish_game(p_code)` | Game ends, SOL payouts are calculated |
 
 ```python
