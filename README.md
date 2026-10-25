@@ -78,3 +78,4 @@ Breaks in the pomodoro don't count.
   `GEMINI_API_KEY` and `ELEVENLABS_API_KEY` (optional: `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`, `GEMINI_MODEL`).
   Without keys it falls back to built-in roasts.
 - **The brick:** see [`hardware/README.md`](hardware/README.md): `bash setup.sh`, pair the speaker, add the key, done.
+  Before a demo, follow its [demo day checklist](hardware/README.md#demo-day-checklist-follow-this-exactly).

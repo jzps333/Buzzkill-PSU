@@ -17,6 +17,61 @@ Two programs run on the Pi (both start on boot):
 - **`speaker.py`**: plays an AI roast on loop while someone is busted, stops while they shake.
 
 
+
+## Demo day checklist (follow this exactly)
+
+**Before you SSH**
+- [ ] JBL Go 3 charged and **on** (not connected to anyone's phone).
+- [ ] Laptop, Pi and all demo phones on the **same Wi-Fi / hotspot** with internet.
+- [ ] Pi plugged in. Wait about 1 minute after power-on: `brick.py` and `speaker.py` start by themselves.
+- [ ] NFC sticker / QR code on the brick (`https://buzzkill-psu.vercel.app/brick`).
+- [ ] 4+ phones: volume up, open **buzzkill.study** and log in (Google, email or guest) **before** the demo.
+      iPhone: allow **Motion & Orientation** when the page asks.
+
+**On the laptop: SSH in**
+```bash
+ssh buzz@172.20.10.4
+```
+(The address can change on a new network. Try `ssh buzz@Buzz.local`, or find the Pi in your hotspot's device list.)
+
+**On the Pi: copy these lines one at a time**
+```bash
+cd ~/Buzzkill-PSU && git pull && cd hardware
+bluetoothctl connect 18:90:67:DE:D2:E1
+systemctl --user restart buzzkill-speaker buzzkill
+bash check.sh
+```
+- `bluetoothctl connect` must say **Connection successful** (the JBL beeps). If not: turn the JBL off and on, run it again.
+- `check.sh` should be all ✅ (the LCD line can be ❌ if it's not plugged in). Fix any other ❌ with the line it prints.
+- You should hear **"Buzzkill speaker ready."** from the JBL after the restart.
+
+**Sound check (optional, 5 seconds)**
+```bash
+python3 speaker.py --test
+```
+A roast plays on the JBL. Too quiet: press **+** on the JBL.
+
+**Leave the logs open on the laptop during the demo** (shows every tap, pickup and roast; Ctrl+C to close)
+```bash
+journalctl --user -u buzzkill-speaker -u buzzkill -f
+```
+
+**The demo (about 60 seconds)**
+1. **Tap** the brick → "New game. Your PIN is ..."
+2. Everyone taps the NFC sticker / scans the QR / types the PIN → **tap** again to hear who's in.
+3. 4+ players in → **tap** → "Game on. Phones down." Phones face down.
+4. One person **picks up** their phone → the JBL roasts them by name.
+5. They **shake** the phone → the roast stops.
+6. **Tap** the brick → time left + scoreboard.
+7. **Hold** the brick for 3 seconds → "Game over." Show the results on a phone.
+
+**If something breaks mid-demo**
+- No sound: `bluetoothctl connect 18:90:67:DE:D2:E1`
+- Brick not answering: `systemctl --user restart buzzkill-speaker buzzkill`
+- Pi totally stuck: run the game from **buzzkill.study/host** on the laptop (it plays the roasts from the laptop).
+
+**After the demo:** `sudo poweroff`, wait for the green light to stop blinking, then unplug.
+
 ## Quick start (on the Pi, over SSH)
 
 First time only: `cd ~/Buzzkill-PSU/hardware && bash setup.sh && sudo reboot`, then pair the speaker (see [Pairing the JBL](#pairing-the-jbl-go-3)).
