@@ -49,10 +49,11 @@ python3 speaker.py --test
 ```
 A roast plays on the JBL. Too quiet: press **+** on the JBL.
 
-**Leave the logs open on the laptop during the demo** (shows every tap, pickup and roast; Ctrl+C to close)
+**Check both programs are running** (the brick = taps and announcements, the speaker = roasts)
 ```bash
-journalctl --user -u buzzkill-speaker -u buzzkill -f
+systemctl --user status buzzkill buzzkill-speaker --no-pager -n 5
 ```
+Both must say **active (running)**. If the speaker doesn't, see [The brick doesn't speak when someone is busted](#the-brick-doesnt-speak-when-someone-is-busted).
 
 **The demo (about 60 seconds)**
 1. **Tap** the brick → "New game. Your PIN is ..."
@@ -66,7 +67,7 @@ journalctl --user -u buzzkill-speaker -u buzzkill -f
 
 **If something breaks mid-demo**
 - No sound: `bluetoothctl connect 18:90:67:DE:D2:E1`
-- Brick not answering: `systemctl --user restart buzzkill-speaker buzzkill`
+- Brick not answering, or no roasts: `systemctl --user restart buzzkill-speaker buzzkill` (always restart **both**)
 - Pi totally stuck: run the game from **buzzkill.study/host** on the laptop (it plays the roasts from the laptop).
 
 **After the demo:** `sudo poweroff`, wait for the green light to stop blinking, then unplug.
@@ -98,9 +99,9 @@ Without it, tapping still works and the brick says "not connected to the game ye
 **4. Start it** (also starts on every boot)
 ```bash
 systemctl --user enable --now buzzkill-speaker buzzkill
-systemctl --user restart buzzkill-speaker buzzkill     # after every git pull
+systemctl --user restart buzzkill-speaker buzzkill     # after every git pull: restart BOTH
 bash check.sh                                           # ✅ / ❌ for every part
-journalctl --user -u buzzkill-speaker -u buzzkill -f    # live logs
+systemctl --user status buzzkill buzzkill-speaker --no-pager -n 10   # running? + latest log lines
 ```
 
 **5. Play**
@@ -124,11 +125,54 @@ Games started from the website's `/host` page with **Buzzkill speaker** picked w
 | Problem | Fix |
 |---|---|
 | No sound | `bluetoothctl connect 18:90:67:DE:D2:E1`, then `wpctl status` |
-| Robot voice instead of ElevenLabs | `journalctl --user -u buzzkill -n 30` says why (key, credits, function not deployed) |
-| Tap does nothing | `journalctl --user -u buzzkill -n 30` |
+| Phone shows **Busted** but the brick says nothing | the speaker program isn't running: see the section below |
+| Robot voice instead of ElevenLabs | `systemctl --user status buzzkill --no-pager -n 20` says why (key, credits, function not deployed) |
+| Tap does nothing | `systemctl --user status buzzkill --no-pager -n 20`, and `python3 brick.py --status` |
+| Game doesn't start at 4 players | `python3 brick.py --status` while people join: each phone must tap **I'm ready** and keep the page open |
+| `journalctl` says "No journal files were found" | this Pi doesn't keep those logs: use `systemctl --user status <name> --no-pager -n 20` instead |
 | Logs say 401 / Invalid API key | the key in `.env` is wrong or still the placeholder |
 | Logs mention the `speakers` table | run `backend/speaker.sql` in the Supabase SQL Editor |
 | Anything else | `bash check.sh` |
+
+### The brick doesn't speak when someone is busted
+
+Two programs run on the Pi. **`buzzkill`** (brick.py) handles taps and announcements. **`buzzkill-speaker`** (speaker.py) plays the roasts.
+If the phone shows **Busted** but the JBL is quiet, the speaker program is the problem. Run these one at a time:
+
+**1. Restart the speaker and check it's running**
+```bash
+systemctl --user restart buzzkill-speaker
+systemctl --user status buzzkill-speaker --no-pager -n 20
+```
+- **active (running)**: good. The last lines show what it's doing. Go to step 3 if it's still quiet.
+- **Unit buzzkill-speaker.service could not be found**: it was never installed. Do step 2.
+- **failed**: the red lines say why.
+
+**2. Only if it wasn't found: install it and start it**
+```bash
+mkdir -p ~/.config/systemd/user
+cp ~/Buzzkill-PSU/hardware/buzzkill-speaker.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now buzzkill-speaker
+```
+You should hear "Buzzkill speaker ready" from the JBL.
+
+**3. Watch it live during a game** (shows exactly why it isn't speaking)
+```bash
+systemctl --user stop buzzkill-speaker
+cd ~/Buzzkill-PSU/hardware
+python3 speaker.py
+```
+Start a game from the brick and have someone pick up. You should see `Game AB12CD is live`, then `AI roast: ...`, and hear it.
+`Network problem: ...` or an error = send that line to whoever's debugging.
+When it works: **Ctrl+C**, then turn the background service back on:
+```bash
+systemctl --user start buzzkill-speaker
+```
+
+**Note:** the speaker finds the game through the brick (the brick writes the game's code to `hardware/.game`),
+so start games by **tapping the brick**. Running `backend/speaker.sql` in Supabase also links games to the speaker
+in the database, which the website's `/host` page needs to show "Buzzkill speaker online".
 
 **Backup:** if the brick is down, anyone logged in can run a game from `https://www.buzzkill.study/host`.
 It plays the roasts on the brick's speaker if `speaker.py` is online, or from the laptop if not.

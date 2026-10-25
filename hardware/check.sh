@@ -61,7 +61,7 @@ echo
 # ---------- programs ----------
 for s in buzzkill-speaker buzzkill; do
   systemctl --user is-active --quiet $s && ok "$s is running" \
-    || bad "$s isn't running" "systemctl --user enable --now $s   (logs: journalctl --user -u $s -n 30)"
+    || bad "$s isn't running" "systemctl --user enable --now $s   (logs: systemctl --user status $s --no-pager -n 20)"
 done
 loginctl show-user "$USER" -p Linger 2>/dev/null | grep -q yes && ok "Keeps running after you log out" \
   || bad "Stops when you log out" "sudo loginctl enable-linger $USER"
