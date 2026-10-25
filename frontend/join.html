@@ -86,6 +86,15 @@
     .team-tag { padding: 6px 12px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13px; }
     .pass-btn { width: 100%; height: 48px; margin-top: 14px; border: 2px solid #fff; border-radius: 14px; background: transparent; color: #fff; font: 800 15px var(--font); cursor: pointer; }
 
+    /* ---------- Optional SOL bet (lobby) ---------- */
+    .bet { margin-top: 14px; padding: 14px; border-radius: 18px; background: rgba(255,255,255,.55); text-align: left; }
+    .bet p { margin: 0 0 8px; font-size: 14px; font-weight: 800; }
+    .bet small { display: block; margin-bottom: 10px; font-size: 12px; color: #5A4710; font-weight: 600; }
+    .bet-row { display: flex; gap: 8px; }
+    .bet-row input { flex: 1; min-width: 0; padding: 10px 12px; border: 2px solid #E8DDBF; border-radius: 12px; font: 700 16px var(--font); }
+    .bet-row button { padding: 10px 14px; border: 0; border-radius: 12px; background: var(--ink); color: #fff; font: 800 14px var(--font); cursor: pointer; }
+    .bet-state { margin: 10px 0 0; font-size: 13px; font-weight: 700; }
+
     @media (prefers-reduced-motion: reduce) { .busted { animation: none; box-shadow: inset 0 0 0 8px var(--red); } }
   </style>
 </head>
@@ -116,6 +125,15 @@
           <button data-choice="none"><b>No breaks</b>until it ends</button>
         </div>
         <p class="vote-tally" id="tally"></p>
+      </div>
+      <div class="bet" id="bet" hidden>
+        <p>💰 Optional: bet test SOL</p>
+        <small>Last one standing takes the whole pot. Uses Phantom on Solana Devnet (free test SOL, not real money).</small>
+        <div class="bet-row" id="betRow">
+          <input id="betAmt" type="number" inputmode="decimal" min="0.01" max="5" step="0.01" value="0.05" aria-label="SOL to bet">
+          <button id="betBtn">Bet with Phantom</button>
+        </div>
+        <p class="bet-state" id="betState"></p>
       </div>
     </div>
     <div id="debug"></div>
@@ -223,10 +241,55 @@
       if (s === "waiting" && joined)  show("happy", "You're in!", "Waiting for 4+ players. Then tap the brick to start.");
       if (s === "live")    show("happy", "Phones down.", "Face down on the brick. Buzz is watching.");
       $("vote").hidden = !(s === "waiting" && joined);
+      $("bet").hidden = !(s === "waiting" && joined) && !betAmount;
+      if (s !== "waiting") $("betRow").hidden = true;
       if (s === "live") { loadMine(); tick(); }
       if (s === "ended")   { hideBusted(); show("happy", "Game over", "Loading results…"); stopMotion(); setTimeout(() => location.href = "results?room=" + room, 2000); }
       if (s === "cancelled") { hideBusted(); stopMotion(); $("start").hidden = true; show("worried", "Game closed", "The host closed this game. Enter a new PIN on buzzkill.study."); }
     }
+
+    // ---------- Optional SOL bet (lobby). The "sol" server function checks the payment on-chain. ----------
+    let betAmount = 0, betPending = false;
+    async function sol(action, extra = {}) {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/sol`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action, game: room, ...extra }),
+      });
+      return r.json();
+    }
+    function showBet(st) {
+      if (st.status === "in" || st.status === "paid" || st.status === "lost" || st.status === "sending") {
+        betAmount = Number(st.amount); betPending = false;
+        $("betRow").hidden = true;
+        $("bet").hidden = false;
+        $("betState").textContent = `✅ You bet ${betAmount} SOL. Don't touch your phone!`;
+      } else if (st.status === "refunded") {
+        betPending = false;
+        $("betState").textContent = "↩️ " + (st.error || "Your bet was sent back.");
+      } else if (st.status === "pending") {
+        betPending = true;
+        $("betState").textContent = "⏳ Waiting for your payment… (approve it in Phantom, then come back here)";
+      }
+    }
+    $("betBtn").onclick = async () => {
+      const amount = Math.round(Number($("betAmt").value) * 1000) / 1000;
+      if (!(amount >= 0.01 && amount <= 5)) { $("betState").textContent = "Pick between 0.01 and 5 SOL."; return; }
+      $("betBtn").disabled = true;
+      const r = await sol("start").catch(() => ({ error: "Couldn't reach the server" }));
+      $("betBtn").disabled = false;
+      if (r.error) { $("betState").textContent = r.error; return; }
+      showBet({ status: "pending" });
+      // Opens this game's bet page inside Phantom's own browser, where it can ask the wallet to pay
+      const page = `${location.origin}/stake?game=${room}&amount=${amount}&ref=${r.reference}&pot=${r.pot}`;
+      location.href = `https://phantom.app/ul/browse/${encodeURIComponent(page)}?ref=${encodeURIComponent(location.origin)}`;
+    };
+    async function checkBet() {
+      if (!token || !room) return;
+      const st = await sol("check").catch(() => null);
+      if (st) showBet(st);
+    }
+    setInterval(() => { if (betPending && document.visibilityState === "visible") checkBet(); }, 4000);
 
     // ---------- Pomodoro vote (lobby) ----------
     const POMO = { sprint: [15, 3, "Sprint"], classic: [25, 5, "Classic"], deep: [50, 10, "Deep"], none: [0, 0, "No breaks"] };
@@ -439,6 +502,7 @@
       }
       send("join");
       joined = true;
+      checkBet();
       setStatus(gameStatus);
       setTimeout(loadTally, 800);
 
@@ -503,6 +567,7 @@
       } else {
         keepAwake();   // the browser drops the wake lock when you leave
         if (gameStatus === "waiting" && joined) send("ping");     // came back before the start: back in the lobby
+        if (betPending) checkBet();                                 // back from Phantom: did the bet arrive?
       }
     });
 
