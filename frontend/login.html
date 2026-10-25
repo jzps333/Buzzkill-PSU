@@ -169,7 +169,7 @@
           Continue with Google
         </button>
 
-        <p class="or">or</p>
+        <p class="or" id="orLine">or</p>
 
         <div class="tabs" role="tablist">
           <button type="button" data-tab="login" class="on" role="tab" aria-selected="true">Log in</button>
@@ -321,6 +321,18 @@
         error ? msg.textContent = error.message : done();
       });
     };
+
+    // Only show "Continue with Google" if Google sign-in is switched on in Supabase
+    // (Authentication → Sign In / Providers → Google). Otherwise the button would just fail.
+    fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_ANON_KEY } })
+      .then(r => r.json())
+      .then(s => {
+        if (!s.external || !s.external.google) {
+          document.getElementById("google").hidden = true;
+          document.getElementById("orLine").hidden = true;
+        }
+      })
+      .catch(() => {});
 
     // Already logged in (e.g. coming back from Google)? Skip this page.
     sb.auth.getSession().then(({ data }) => { if (data.session) done(); });
