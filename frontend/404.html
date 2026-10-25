@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzkill · Page not found</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root { --cream: #FFFAEB; --honey: #F5D35A; --ink: #1F1B16; --white: #FFFFFF; --font: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100svh; display: grid; place-items: center; padding: 24px 16px; background: var(--cream); color: var(--ink); font: 500 16px/1.55 var(--font); text-align: center; -webkit-font-smoothing: antialiased; }
+    :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+    .card { width: min(460px, 100%); padding: 34px 26px 30px; border-radius: 28px; background: var(--honey); }
+    .bee { width: 110px; margin: 0 auto 10px; }
+    h1 { margin: 0 0 6px; font-size: clamp(30px, 6vw, 40px); line-height: 1.05; font-weight: 800; letter-spacing: -1px; }
+    p { margin: 0 0 22px; color: #3E3420; }
+    .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    a { display: inline-flex; align-items: center; height: 48px; padding: 0 22px; border-radius: 999px; background: var(--ink); color: var(--white); font-weight: 800; text-decoration: none; }
+    a.ghost { background: rgba(255,255,255,.6); color: var(--ink); }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="bee" id="bee"></div>
+    <h1>This page flew off.</h1>
+    <p>Buzz looked everywhere and couldn't find it. Check the address, or head back home.</p>
+    <div class="row">
+      <a href="/">Go home</a>
+      <a class="ghost" href="/leaderboard">Leaderboard</a>
+    </div>
+  </main>
+  <script src="/buzz.js"></script>
+  <script>Buzz.bee(document.getElementById("bee"), "worried"); document.getElementById("bee").classList.add("bz-float");</script>
+</body>
+</html>

@@ -4,58 +4,189 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Buzzkill · Results</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    body { font-family: system-ui, sans-serif; background: #111; color: #eee; max-width: 520px; margin: 0 auto; padding: 32px 16px; }
-    .muted { color: #888; }
-    .card { background: #1b1b1b; border-radius: 12px; padding: 14px 16px; margin-top: 12px; }
-    .row { display: flex; justify-content: space-between; align-items: baseline; }
-    .name { font-weight: 700; font-size: 18px; }
-    .titles { margin-top: 6px; color: #f5c542; }
-    .up { color: #6fdc8c; } .down { color: #ff7a7a; }
-    a { color: #f5c542; }
+    :root {
+      --cream: #FFFAEB; --honey: #F5D35A; --sand: #F4EEDC; --peach: #F7E4BF;
+      --ink: #1F1B16; --ink-2: #5E574B; --line: #EAE2CC; --white: #FFFFFF;
+      --silver: #E4E1D8; --bronze: #EFC9A0;
+      --green: #2F8A55; --red: #B42323;
+      --font: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100svh; background: var(--cream); color: var(--ink); font: 500 16px/1.55 var(--font); -webkit-font-smoothing: antialiased; }
+    a { color: inherit; }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+
+    .wrap { width: min(1040px, 100% - 32px); margin: 0 auto; }
+
+    .nav { display: flex; align-items: center; justify-content: space-between; height: 72px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; text-decoration: none; }
+    .brand-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--honey); display: grid; place-items: center; }
+    .nav-links { display: flex; align-items: center; gap: 22px; font-size: 14px; font-weight: 700; }
+    .nav-links a:not(.pill) { text-decoration: none; }
+    .nav-links a:not(.pill):hover { text-decoration: underline; }
+    .pill { display: inline-flex; align-items: center; height: 38px; padding: 0 16px; border-radius: 999px; background: var(--ink); color: var(--white); font-size: 14px; font-weight: 700; text-decoration: none; }
+    .pill:hover { background: #3A332A; }
+
+    main { width: min(600px, 100%); margin: 0 auto; padding: 8px 0 64px; }
+
+    .head { padding: 28px 24px 24px; border-radius: 26px; background: var(--honey); text-align: center; }
+    .head .bee { width: 96px; margin: 0 auto 6px; }
+    .head h1 { margin: 0 0 4px; font-size: clamp(32px, 6vw, 44px); line-height: 1.05; font-weight: 800; letter-spacing: -1.1px; }
+    .head p { margin: 0; font-size: 15px; color: #3E3420; }
+
+    .list { display: grid; gap: 10px; margin-top: 14px; }
+    .player { padding: 18px 20px; border: 1px solid var(--line); border-radius: 20px; background: var(--white); }
+    .player.p1 { border: 0; background: var(--ink); color: var(--white); }
+    .player.p1 .meta { color: #D8D0BE; }
+    .row { display: flex; align-items: center; gap: 14px; }
+    .rank { flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; font-size: 15px; font-weight: 800; background: var(--sand); }
+    .p1 .rank { background: var(--honey); color: var(--ink); }
+    .p2 .rank { background: var(--silver); }
+    .p3 .rank { background: var(--bronze); }
+    .name { flex: 1; min-width: 0; margin: 0; font-size: 18px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pickups { flex: none; text-align: right; }
+    .pickups b { display: block; font-size: 22px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+    .pickups span { font-size: 12px; font-weight: 700; }
+    .meta { color: var(--ink-2); }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0 50px; }
+    .badge { padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 800; }
+    .badge.iron { background: var(--honey); color: var(--ink); }
+    .badge.doom { background: #FBE0E1; color: var(--red); }
+    .badge.fold { background: var(--peach); color: #7A4A12; }
+    .badge.sol-up { background: #E3F2E8; color: var(--green); }
+    .badge.sol-down { background: #FBE0E1; color: var(--red); }
+
+    .empty { margin-top: 14px; padding: 28px 20px; border: 2px dashed var(--line); border-radius: 20px; text-align: center; color: var(--ink-2); font-weight: 600; }
+
+    .legend { margin-top: 14px; padding: 16px 18px; border-radius: 18px; background: var(--sand); font-size: 13px; color: var(--ink-2); }
+    .legend b { color: var(--ink); }
+
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+    .btn { display: flex; align-items: center; justify-content: center; height: 50px; border-radius: 999px; background: var(--ink); color: var(--white); font: 800 15px var(--font); text-decoration: none; }
+    .btn:hover { background: #3A332A; }
+    .btn.ghost { background: var(--white); color: var(--ink); border: 2px solid var(--ink); }
+    .btn.ghost:hover { background: #FBF8EF; }
+
+    @media (max-width: 560px) {
+      .nav-links a:not(.pill) { display: none; }
+      .player { padding: 16px; }
+      .badges { margin-left: 0; }
+      .actions { grid-template-columns: 1fr; }
+    }
+    .team-win { margin-top: 14px; padding: 18px 22px; border-radius: 22px; background: var(--ink); color: #fff; text-align: center; }
+    .team-win b { display: block; font-size: 24px; font-weight: 800; }
+    .team-win span { font-size: 14px; color: #D8D0BE; }
   </style>
 </head>
 <body>
-  <p><a href="/dashboard" style="color:#888;text-decoration:none">← Dashboard</a></p>
-  <h1>Results</h1>
-  <p class="muted" id="sub">Loading…</p>
-  <div id="list"></div>
-  <p><a href="leaderboard">All-time leaderboard →</a></p>
+  <div class="wrap">
+    <nav class="nav">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3c-3.6 0-6 2.7-6 6.3V14l-2 3h16l-2-3V9.3C18 5.7 15.6 3 12 3z" fill="#1F1B16"/><circle cx="12" cy="19.5" r="2.2" fill="#1F1B16"/></svg>
+        </span>
+        Buzzkill
+      </a>
+      <div class="nav-links">
+        <a href="/#how">How it works</a>
+        <a href="/leaderboard">Leaderboard</a>
+        <a class="pill" href="/dashboard">My dashboard</a>
+      </div>
+    </nav>
+  </div>
+
+  <main>
+    <section class="head">
+      <div class="bee" id="bee"></div>
+      <h1 id="title">Game over</h1>
+      <p id="sub">Loading the results…</p>
+    </section>
+
+    <div class="team-win" id="teamWin" hidden></div>
+    <div class="list" id="list"></div>
+
+    <div class="legend" id="legend" hidden>
+      <b>Iron Will</b>: zero pickups the whole game. <b>Doomscroller</b>: the most pickups. <b>First to Fold</b>: picked up first.
+    </div>
+
+    <div class="actions">
+      <a class="btn" href="/">Play another game</a>
+      <a class="btn ghost" href="/leaderboard">All-time leaderboard</a>
+    </div>
+  </main>
 
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
+  <script src="buzz.js"></script>
   <script>
     const raw = new URLSearchParams(location.search).get("room") || "";
     const room = /^[A-Za-z0-9]{4,12}$/.test(raw) ? raw.toUpperCase() : null;
 
+    const $ = id => document.getElementById(id);
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
-    async function load() {
-      if (!room) { document.getElementById("sub").textContent = "No game picked."; return; }
-      const { data, error } = await sb.from("game_awards").select("*").eq("game", room).order("pickups");
-      const sub = document.getElementById("sub");
-      if (error || !data?.length) { sub.textContent = "No results for this game yet."; return; }
-      sub.textContent = `Game ${room} · ${data.length} players`;
+    Buzz.bee($("bee"));
+    $("bee").classList.add("bz-float");
 
-      document.getElementById("list").replaceChildren(...data.map((p, i) => {
-        const card = el("div", "card");
+    function empty(text) {
+      $("list").replaceChildren(el("div", "empty", text));
+    }
+
+    async function load() {
+      if (!room) { $("sub").textContent = "No game picked."; empty("Open results from the end of a game, or check the all-time leaderboard."); return; }
+      const { data, error } = await sb.from("game_awards").select("*").eq("game", room).order("pickups");
+      if (error || !data?.length) { $("sub").textContent = `Game ${room}`; empty("No results for this game yet."); return; }
+
+      const winner = data[0];
+      const { data: g } = await sb.from("games").select("mode, pomo_choice").eq("code", room).maybeSingle();
+      const POMO = { sprint: "Sprint pomodoro", classic: "Classic pomodoro", deep: "Deep pomodoro", none: "no breaks" };
+      $("title").textContent = winner.pickups === 0 ? `${winner.username} stayed focused` : "Game over";
+      $("sub").textContent = `Game ${room}, ${data.length} player${data.length === 1 ? "" : "s"}` +
+        (g?.pomo_choice ? `, ${POMO[g.pomo_choice] ?? g.pomo_choice}` : "") + ". Fewest pickups wins.";
+
+      // Teams: fewest total pickups wins
+      if (g?.mode === "teams") {
+        const tot = { 1: 0, 2: 0 };
+        data.forEach(p => { if (p.team) tot[p.team] += p.pickups; });
+        const name = { 1: "🍯 Team Honey", 2: "🐝 Team Stingers" };
+        const head = tot[1] === tot[2] ? "🤝 It's a tie!" : `${name[tot[1] < tot[2] ? 1 : 2]} wins!`;
+        $("teamWin").replaceChildren(el("b", "", head), el("span", "", `Honey ${tot[1]} pickups · Stingers ${tot[2]} pickups`));
+        $("teamWin").hidden = false;
+        $("title").textContent = head;
+      }
+
+      let anyBadge = false;
+      $("list").replaceChildren(...data.map((p, i) => {
+        const card = el("div", `player p${i + 1}`);
         const row = el("div", "row");
-        row.append(el("span", "name", `${i + 1}. ${p.username}`), el("span", "muted", `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`));
+        const pick = el("div", "pickups");
+        pick.append(el("b", "", p.pickups), el("span", "meta", `pickup${p.pickups === 1 ? "" : "s"}`));
+        const team = g?.mode === "teams" && p.team ? (p.team === 1 ? "🍯 " : "🐝 ") : "";
+        row.append(el("span", "rank", i + 1), el("p", "name", team + p.username), pick);
         card.append(row);
 
-        const titles = [
-          p.iron_will && "🏆 Iron Will",
-          p.doomscroller && "📱 Doomscroller",
-          p.first_to_fold && "🫠 First to Fold",
-        ].filter(Boolean);
-        if (titles.length) card.append(el("div", "titles", titles.join("  ·  ")));
-
+        const badges = [];
+        if (p.iron_will)     badges.push(["iron", "Iron Will"]);
+        if (p.doomscroller)  badges.push(["doom", "Doomscroller"]);
+        if (p.first_to_fold) badges.push(["fold", "First to Fold"]);
         if (Number(p.sol_in) > 0) {
           const net = Number(p.sol_back) - Number(p.sol_in);
-          card.append(el("div", net >= 0 ? "up" : "down", `${net >= 0 ? "+" : ""}${net.toFixed(3)} SOL`));
+          badges.push([net >= 0 ? "sol-up" : "sol-down", `${net >= 0 ? "+" : ""}${net.toFixed(3)} SOL`]);
+        }
+        if (badges.length) {
+          anyBadge = true;
+          const wrap = el("div", "badges");
+          for (const [cls, text] of badges) wrap.append(el("span", `badge ${cls}`, text));
+          card.append(wrap);
         }
         return card;
       }));
+      $("legend").hidden = !anyBadge;
     }
 
     load();

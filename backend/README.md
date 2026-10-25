@@ -5,7 +5,7 @@ Supabase handles logins and the database. There's no server code to run for this
 ## Setup (once)
 
 1. Make a project at supabase.com.
-2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same, in order, with `events.sql`, `security.sql`, `game.sql`. (All are already done for the buzzkill project.)
+2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same, in order, with `events.sql`, `security.sql`, `game.sql`, `shake_ramp.sql`, `friends.sql`, `phone_only.sql`, `lobby.sql`, `features.sql`, `speaker.sql`. (All are already done for the buzzkill project.)
 3. **Authentication → Sign In / Providers**:
    - Turn **on** "Allow anonymous sign-ins" (this is how guests work).
    - Turn **off** "Confirm email" (so signups work instantly at the hackathon).
@@ -21,8 +21,10 @@ Supabase handles logins and the database. There's no server code to run for this
 | `games` | One row per study session: room code, status, start/end time |
 | `results` | One row per person per game: pickups, SOL in, SOL back |
 | `events` | Every join, pickup and shake from a phone. The Pi listens to it live. |
+| `speakers` | The Pi's Bluetooth speaker checking in. `games.speaker` = which speaker plays that game's roasts (`speaker.sql`) |
 | `leaderboard` (view) | Stats calculated from `results`, most focused first |
 | `game_awards` (view) | Titles per game: Iron Will, Doomscroller, First to Fold |
+| `friendships` | Friend requests and friends (pending / accepted). Use `send_friend_request(username)` and `accept_friend_request(id)` |
 | `rivalries` (view) | Your wins/losses vs. every other player. Nemesis = most losses |
 
 ## Stats
@@ -36,11 +38,20 @@ Supabase handles logins and the database. There's no server code to run for this
 
 The database is the referee. Phones only send events; a trigger does the rest:
 
-- `join` (game waiting) → adds the player to `results`
-- `pickup` / `left_page` (game live) → +1 pickup, `alarm_on = true`, 10 seconds of shaking needed (run `shake_10s.sql` on the live database)
+- `join` / `ping` (game waiting) → adds the player to `results` (or refreshes `last_seen`). Phones ping every ~8s while waiting
+- `leave` (game waiting) → player closed the page before the start: removed from the game
+- `pickup` / `left_page` (game live) → +1 pickup, `alarm_on = true`, shaking needed: 10s, 30s, 1 min, then +30s each pickup after (`shake_ramp.sql`)
 - `shake` → phones send this ~2×/second while shaking; it adds up shaking time and sets `is_shaking = true` (sound paused). Enough time = alarm off
 - `shake_stop` → phone stopped shaking early: `is_shaking = false`, sound comes back
 - `create_game()`, `start_game(code)`, `finish_game(code)` run games. `start_game` refuses to start with fewer than 4 players, for everyone. Only the Pi (secret key) or the person who created the game can call them. `finish_game` also calculates payouts.
+- `prune_lobby(code)` drops waiting players silent for 25s (host page calls it every 8s; `start_game` does it too). `cancel_game(code)` closes a game that hasn't started (status `cancelled`, never counts in stats)
+
+### Emergency pass, teams, pomodoro (features.sql)
+
+- `vote` (waiting, `detail` = sprint / classic / deep / none) → pomodoro vote. `start_game` picks the most votes (ties and no votes = classic) and sets `pomo_work` / `pomo_break` minutes.
+- During a break (and 15s after it), pickups don't count. `on_break(code)` tells you if it's break time.
+- `pass` → right after your own pickup: cancels it and gives 10 free minutes (`pass_until`). Once per game (`pass_used`).
+- `create_game(p_mode)` with `'solo'` or `'teams'`. In teams, `start_game` splits players into `team` 1 (Honey) and 2 (Stingers). One pickup busts the whole team (`alarm_cause` = who picked up). Shake time grows with the team's total pickups. Fewest team pickups wins.
 
 See `hardware/README.md` for what the Pi does.
 
@@ -49,6 +60,11 @@ See `hardware/README.md` for what the Pi does.
 sb.from("rivalries").select("*").eq("user_id", myId).gt("losses", 0)
   .order("losses", { ascending: false }).limit(1)
 ```
+
+## Phone-only joining (phone_only.sql)
+
+You can only join a game from a phone (iPhone or Android phone). Laptops, iPads and tablets are blocked in 3 places:
+the PIN box, the join page (which also checks for a real motion sensor before joining), and the database.
 
 ## Google sign-in
 

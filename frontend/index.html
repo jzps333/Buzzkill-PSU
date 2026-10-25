@@ -27,6 +27,7 @@
 
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
+    section[id] { scroll-margin-top: 16px; }
     body {
       margin: 0;
       background: var(--cream);
@@ -310,7 +311,7 @@
       </a>
       <div class="nav-links">
         <a href="#how">How it works</a>
-        <a href="/leaderboard">Leaderboard</a>
+        <a href="#leaderboard">Leaderboard</a>
         <a class="btn" href="/login" id="loginLink">Log in</a>
       </div>
     </nav>
@@ -381,7 +382,7 @@
 
         <article class="feature peach">
           <h3>Pick it up and everyone knows</h3>
-          <p>The brick sounds the alarm, and Buzz shows up on your screen until you've shaken for 10 seconds.</p>
+          <p>The brick sounds the alarm, and Buzz shows up on your screen until you've shaken it off: 10 seconds the first time, longer every time after.</p>
           <div class="phone" aria-hidden="true">
             <div class="screen dark">
               <p class="s-label">Pickup detected</p>
@@ -413,7 +414,7 @@
     </section>
 
     <!-- ================= Leaderboard ================= -->
-    <section class="board">
+    <section class="board" id="leaderboard">
       <div class="wrap">
         <div class="board-card">
           <h2>Most focused this week</h2>
@@ -450,6 +451,7 @@
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
   <script src="buzz.js"></script>
+  <script src="device.js"></script>
   <script>
     const $ = id => document.getElementById(id);
 
@@ -479,18 +481,19 @@
       const value = $("pin").value.trim().toUpperCase();
       say("");
       if (!/^[A-Z0-9]{4,12}$/.test(value)) { say("A game PIN is 4 to 12 letters and numbers.", true); wobble(); return; }
+      if (!Device.isPhone()) { say(`Join from your phone: open buzzkill.study on your phone and enter ${value}.`, true); wobble(); return; }
       $("pinBtn").disabled = true;
       try {
         const { data: game, error } = await sb.from("games").select("status").eq("code", value).maybeSingle();
         if (error) throw error;
         if (!game) throw new Error("No game with that PIN. Check the brick and try again.");
         if (game.status === "ended") throw new Error("That game has ended. Start a new one on the brick.");
+        if (game.status === "cancelled") throw new Error("The host closed that game. Ask for the new PIN.");
         pin = value;
-        if (session && !session.user.is_anonymous) return enter();   // logged in: skip the nickname
-        $("pinForm").hidden = true;
-        $("nameStep").hidden = false;
-        $("pinShown").textContent = pin;
-        $("nick").focus({ preventScroll: true });
+        if (session) return enter();    // already logged in (account or guest): straight to the game
+        // Not logged in: log in, sign up, or play as guest first, then come straight back to this game
+        say("Log in to join. Taking you there…");
+        location.href = "/login?next=" + encodeURIComponent("/join?room=" + pin);
       } catch (err) {
         say(err.message, true);
         wobble();
