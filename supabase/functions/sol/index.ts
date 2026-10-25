@@ -71,13 +71,9 @@ async function findPayment(conn: Connection, pot: PublicKey, reference: string) 
   return null;
 }
 
-// The network fee (5000 lamports = 0.000005 SOL) comes out of each payout, so the pot never runs dry
-const FEE = 5000;
 async function send(conn: Connection, potKey: Keypair, to: string, sol: number): Promise<string> {
-  const lamports = Math.round(sol * LAMPORTS_PER_SOL) - FEE;
-  if (lamports <= 0) throw new Error("Too small to send");
   const tx = new Transaction().add(SystemProgram.transfer({
-    fromPubkey: potKey.publicKey, toPubkey: new PublicKey(to), lamports,
+    fromPubkey: potKey.publicKey, toPubkey: new PublicKey(to), lamports: Math.round(sol * LAMPORTS_PER_SOL),
   }));
   return await sendAndConfirmTransaction(conn, tx, [potKey], { commitment: "confirmed" });
 }
