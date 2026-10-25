@@ -58,8 +58,6 @@
     .badge.iron { background: var(--honey); color: var(--ink); }
     .badge.doom { background: #FBE0E1; color: var(--red); }
     .badge.fold { background: var(--peach); color: #7A4A12; }
-    .badge.sol-up { background: #E3F2E8; color: var(--green); }
-    .badge.sol-down { background: #FBE0E1; color: var(--red); }
 
     .empty { margin-top: 14px; padding: 28px 20px; border: 2px dashed var(--line); border-radius: 20px; text-align: center; color: var(--ink-2); font-weight: 600; }
 
@@ -198,10 +196,6 @@
         if (p.iron_will)     badges.push(["iron", "Iron Will"]);
         if (p.doomscroller)  badges.push(["doom", "Doomscroller"]);
         if (p.first_to_fold) badges.push(["fold", "First to Fold"]);
-        if (Number(p.sol_in) > 0) {
-          const net = Number(p.sol_back) - Number(p.sol_in);
-          badges.push([net >= 0 ? "sol-up" : "sol-down", `${net >= 0 ? "+" : ""}${net.toFixed(3)} SOL`]);
-        }
         for (const text of (rivals[p.user_id] || []).slice(0, 2)) badges.push(["rival", text]);
         if (badges.length) {
           anyBadge = true;

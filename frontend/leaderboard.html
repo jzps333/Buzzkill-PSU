@@ -139,10 +139,9 @@
               <th class="n">Clean</th>
               <th class="n hide-sm">Games</th>
               <th class="n hide-sm">Minutes</th>
-              <th class="n hide-sm">SOL</th>
             </tr>
           </thead>
-          <tbody id="rows"><tr><td colspan="7" class="empty">Loading the leaderboard…</td></tr></tbody>
+          <tbody id="rows"><tr><td colspan="6" class="empty">Loading the leaderboard…</td></tr></tbody>
         </table>
       </div>
       <p class="note">Guests aren't ranked. <a href="/login?tab=signup">Make an account</a> to get on the board.</p>
@@ -169,12 +168,6 @@
       if (!s.user.is_anonymous) { $("accountLink").textContent = "My dashboard"; $("accountLink").href = "/dashboard"; }
       load();
     });
-
-    function solCell(n) {
-      const td = el("td", "n hide-sm", n == null ? "–" : `${n >= 0 ? "+" : ""}${Number(n).toFixed(3)}`);
-      if (n != null && Number(n) !== 0) td.classList.add(n > 0 ? "up" : "down");
-      return td;
-    }
 
     function renderPodium(top) {
       const podium = $("podium");
@@ -209,7 +202,6 @@
           el("td", "n", `${fmt(p.clean_pct)}%`),
           el("td", "n hide-sm", p.games),
           el("td", "n hide-sm", fmt(p.minutes_played)),
-          solCell(p.total_sol),
         );
         rows.append(tr);
       });
