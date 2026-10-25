@@ -144,20 +144,37 @@ python3 nfc.py                   # tag now opens https://buzzkill-psu.vercel.app
 
 **2. Touch sensor:** `python3 test_touch.py`, touch the pad, it should print `touched`.
 
-**3. JBL Go 3** — hold its Bluetooth button until it flashes blue fast, then:
-```bash
-bluetoothctl
-  power on
-  scan on            # wait for "JBL GO 3" and copy its address, e.g. AA:BB:CC:DD:EE:FF
-  pair AA:BB:CC:DD:EE:FF
-  trust AA:BB:CC:DD:EE:FF
-  connect AA:BB:CC:DD:EE:FF
-  exit
-espeak-ng "Put your phone down"  # should come out of the JBL
-```
-If it plays from the wrong place: `wpctl status`, find the JBL under Sinks, `wpctl set-default <its number>`.
+**3. JBL Go 3 (Bluetooth)** — our speaker's address is `18:90:67:DE:D2:E1`.
 
-Then put its address in `.env` as `BT_SPEAKER_MAC=...` and check `python3 speaker.py --test` says a roast.
+Turn the JBL on and hold its Bluetooth button until it flashes blue fast (turn Bluetooth off on any phone it's connected to).
+Then type these **one at a time** inside `bluetoothctl` (pasting several lines at once doesn't work):
+```bash
+sudo rfkill unblock bluetooth
+bluetoothctl
+```
+```
+power on
+scan on                        # wait for: [NEW] Device 18:90:67:DE:D2:E1 JBL Go 3
+pair 18:90:67:DE:D2:E1         # right away, WHILE it's still scanning
+trust 18:90:67:DE:D2:E1
+connect 18:90:67:DE:D2:E1      # wait for "Connection successful"
+scan off
+info 18:90:67:DE:D2:E1         # should say Paired: yes, Trusted: yes, Connected: yes
+exit
+```
+Back in the normal terminal: `espeak-ng "Put your phone down"` should come out of the JBL.
+If it plays somewhere else: `wpctl status`, find the JBL's number under Sinks, `wpctl set-default <number>`.
+
+| You see | Means / fix |
+|---|---|
+| `Device ... not available` | The scan already stopped. `scan on` again and pair while it's scanning |
+| `Failed to pair: AlreadyExists` | Already paired. Skip to `trust` and `connect` |
+| Lots of `[DEL] Device ...` lines | Normal: after `scan off` the Pi forgets the other nearby devices |
+| `Failed to pair` (anything else) | `remove 18:90:67:DE:D2:E1`, put the JBL in pairing mode, start again |
+| `Failed to connect` | JBL is off or connected to a phone. Turn that phone's Bluetooth off, `connect` again |
+
+Once paired, the Pi reconnects by itself: put `BT_SPEAKER_MAC=18:90:67:DE:D2:E1` in `.env` and `speaker.py` checks every 10 s.
+Test with `python3 speaker.py --test` (says a roast).
 
 **4. Run it:** paste the `sb_secret` key into `.env`, then
 ```bash
@@ -169,3 +186,6 @@ Two programs run on the Pi:
 - `speaker.py`: plays the roasts for whichever game picked this speaker (see "Bluetooth speaker" above).
 
 Without the secret key, `brick.py` just points the tag at the website and talks when touched.
+
+**5. Check everything:** `bash check.sh` tests the speaker, the backend, the NFC tag, the touch sensor and both services,
+and prints ✅ or ❌ with what to do for each.
