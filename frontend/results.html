@@ -78,6 +78,22 @@
       .badges { margin-left: 0; }
       .actions { grid-template-columns: 1fr; }
     }
+    /* Rivalry badges + your head-to-head */
+    .badge.rival { background: #E9E3FF; color: #4B3A9A; }
+    .h2h { margin-top: 14px; padding: 20px; border: 1px solid var(--line); border-radius: 22px; background: var(--white); }
+    .h2h h2 { margin: 0 0 4px; font-size: 20px; font-weight: 800; }
+    .h2h > p { margin: 0 0 12px; font-size: 14px; color: var(--ink-2); }
+    .vs { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+    .vs .who { margin: 0; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .vs .who small { margin-left: 6px; padding: 2px 8px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 11px; }
+    .vs .res { margin: 0; font-size: 14px; color: var(--ink-2); }
+    .vs .rec { grid-row: 1 / span 2; grid-column: 2; text-align: right; }
+    .vs .rec b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+    .vs .rec span { font-size: 12px; font-weight: 700; color: var(--ink-2); }
+    .dots { display: flex; gap: 4px; margin-top: 4px; justify-content: flex-end; }
+    .dots i { width: 18px; height: 18px; border-radius: 6px; display: grid; place-items: center; font: 800 10px var(--font); font-style: normal; color: #fff; }
+    .dots .W { background: var(--green); } .dots .L { background: var(--red); } .dots .T { background: #A39C8C; }
+    .vs .badges { grid-column: 1 / -1; margin: 4px 0 0; }
     .team-win { margin-top: 14px; padding: 18px 22px; border-radius: 22px; background: var(--ink); color: #fff; text-align: center; }
     .team-win b { display: block; font-size: 24px; font-weight: 800; }
     .team-win span { font-size: 14px; color: #D8D0BE; }
@@ -110,8 +126,15 @@
     <div class="team-win" id="teamWin" hidden></div>
     <div class="list" id="list"></div>
 
+    <section class="h2h" id="h2h" hidden>
+      <h2>Your head-to-head</h2>
+      <p>How you did against each player this game, and your record against them overall (fewer pickups wins).</p>
+      <div id="h2hList"></div>
+    </section>
+
     <div class="legend" id="legend" hidden>
       <b>Iron Will</b>: zero pickups the whole game. <b>Doomscroller</b>: the most pickups. <b>First to Fold</b>: picked up first.
+      <b>🔥 In a row</b>: beat that player several games running. <b>↩ Revenge</b>: beat someone who beat you last time. <b>⭐ First win</b>: first time beating them.
     </div>
 
     <div class="actions">
@@ -160,6 +183,7 @@
         $("title").textContent = head;
       }
 
+      const rivals = await rivalryBadges(data).catch(() => ({}));
       let anyBadge = false;
       $("list").replaceChildren(...data.map((p, i) => {
         const card = el("div", `player p${i + 1}`);
@@ -178,6 +202,7 @@
           const net = Number(p.sol_back) - Number(p.sol_in);
           badges.push([net >= 0 ? "sol-up" : "sol-down", `${net >= 0 ? "+" : ""}${net.toFixed(3)} SOL`]);
         }
+        for (const text of (rivals[p.user_id] || []).slice(0, 2)) badges.push(["rival", text]);
         if (badges.length) {
           anyBadge = true;
           const wrap = el("div", "badges");
@@ -187,6 +212,92 @@
         return card;
       }));
       $("legend").hidden = !anyBadge;
+      headToHead(data).catch(() => {});
+    }
+
+    // ---------- Rivalries: every game these players have played together ----------
+    // history[a][b] = ["W", "L", "T", ...] oldest first, from a's side, ending with this game
+    let history = null;
+    async function loadHistory(players) {
+      if (history) return history;
+      const ids = players.map(p => p.user_id);
+      const { data: rows, error } = await sb.from("results")
+        .select("game, user_id, pickups, games!inner(end_time, status)")
+        .in("user_id", ids).eq("games.status", "ended").limit(5000);
+      if (error) throw error;
+      const games = new Map();
+      for (const r of rows || []) {
+        if (!games.has(r.game)) games.set(r.game, { end: r.games.end_time, picks: new Map() });
+        games.get(r.game).picks.set(r.user_id, r.pickups);
+      }
+      const thisEnd = games.get(room)?.end;
+      const ordered = [...games.entries()]
+        .filter(([, g]) => !thisEnd || g.end <= thisEnd)              // nothing after this game
+        .sort((a, b) => new Date(a[1].end) - new Date(b[1].end));
+      history = {};
+      for (const a of ids) {
+        history[a] = {};
+        for (const b of ids) {
+          if (a === b) continue;
+          history[a][b] = ordered.filter(([, g]) => g.picks.has(a) && g.picks.has(b))
+            .map(([, g]) => g.picks.get(a) < g.picks.get(b) ? "W" : g.picks.get(a) > g.picks.get(b) ? "L" : "T");
+        }
+      }
+      return history;
+    }
+
+    function pairBadges(h, name) {
+      if (h.at(-1) !== "W") return [];
+      let streak = 0;
+      for (let i = h.length - 1; i >= 0 && h[i] === "W"; i--) streak++;
+      if (streak >= 3) return [`🔥 ${streak} in a row vs ${name}`];
+      if (h.length >= 2 && h.at(-2) === "L") return [`↩ Revenge on ${name}`];
+      if (h.length >= 2 && !h.slice(0, -1).includes("W")) return [`⭐ First win vs ${name}`];
+      return [];
+    }
+
+    async function rivalryBadges(players) {
+      const h = await loadHistory(players), out = {};
+      const name = Object.fromEntries(players.map(p => [p.user_id, p.username]));
+      for (const a of players) {
+        out[a.user_id] = players.filter(b => b.user_id !== a.user_id)
+          .flatMap(b => pairBadges(h[a.user_id][b.user_id], name[b.user_id]).map(t => [t, t.startsWith("🔥") ? 0 : t.startsWith("↩") ? 1 : 2]))
+          .sort((x, y) => x[1] - y[1]).map(x => x[0]);
+      }
+      return out;
+    }
+
+    // ---------- Your head-to-head (only if you played this game) ----------
+    async function headToHead(players) {
+      const { data: { session } } = await sb.auth.getSession();
+      const me = session?.user?.id;
+      const mine = players.find(p => p.user_id === me);
+      if (!mine || players.length < 2) return;
+      const h = await loadHistory(players);
+      const others = players.filter(p => p.user_id !== me);
+      const losses = id => h[me][id].filter(x => x === "L").length;
+      const nemesis = others.reduce((n, p) => losses(p.user_id) > (n ? losses(n.user_id) : 1) ? p : n, null);   // 2+ losses to count
+
+      $("h2hList").replaceChildren(...others.map(p => {
+        const hist = h[me][p.user_id], now = hist.at(-1);
+        const w = hist.filter(x => x === "W").length, l = hist.filter(x => x === "L").length;
+        const row = el("div", "vs");
+        const who = el("p", "who", p.username);
+        if (nemesis && nemesis.user_id === p.user_id) who.append(el("small", "", "Nemesis"));
+        const verb = now === "W" ? "Beat them" : now === "L" ? "Lost" : "Tied";
+        const res = el("p", "res", `${verb} this game: ${mine.pickups} vs ${p.pickups} pickups`);
+        const rec = el("div", "rec");
+        rec.append(el("b", "", `${w}–${l}`), el("span", "", hist.length === 1 ? "first game together" : `in ${hist.length} games`));
+        const dots = el("div", "dots");
+        dots.setAttribute("aria-label", "Last games: " + hist.slice(-5).join(", "));
+        for (const x of hist.slice(-5)) dots.append(el("i", x, x));
+        rec.append(dots);
+        row.append(who, rec, res);
+        const b = pairBadges(hist, p.username);
+        if (b.length) { const wrap = el("div", "badges"); b.forEach(t => wrap.append(el("span", "badge rival", t))); row.append(wrap); }
+        return row;
+      }));
+      $("h2h").hidden = false;
     }
 
     load();
