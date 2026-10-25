@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzkill · Dashboard</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #eee; line-height: 1.4; }
+    main { max-width: 520px; margin: 0 auto; padding: 28px 16px 48px; }
+    header { display: flex; justify-content: space-between; align-items: center; }
+    h1 { margin: 0; font-size: 1.6rem; }
+    .muted { color: #888; }
+    .card { background: #1b1b1b; border: 1px solid #2a2a2a; border-radius: 14px; padding: 18px; margin-top: 16px; }
+    .card h2 { margin: 0 0 4px; font-size: 1.1rem; }
+    .btn { display: block; width: 100%; padding: 14px; margin-top: 12px; border: 0; border-radius: 10px; font-size: 1rem; font-weight: 700; text-align: center; text-decoration: none; cursor: pointer; }
+    .primary { background: #f5c542; color: #111; }
+    .secondary { background: #262626; color: #eee; border: 1px solid #333; }
+    .link { background: none; border: 0; color: #888; font-size: .95rem; cursor: pointer; padding: 0; }
+    .row { display: flex; gap: 8px; margin-top: 12px; }
+    .row input { flex: 1; min-width: 0; padding: 14px; border-radius: 10px; border: 1px solid #333; background: #111; color: #eee;
+                 font-size: 1.2rem; letter-spacing: 4px; text-transform: uppercase; }
+    .row .btn { width: auto; margin: 0; padding: 14px 20px; }
+    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
+    .stat { background: #141414; border-radius: 10px; padding: 12px; }
+    .stat b { display: block; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+    .up { color: #6fdc8c; } .down { color: #ff7a7a; }
+    #msg { color: #ff7a7a; margin-top: 10px; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <div class="muted">Welcome back</div>
+        <h1 id="name">…</h1>
+      </div>
+      <button class="link" id="logout">Log out</button>
+    </header>
+
+    <!-- Shows only if you're already in a game -->
+    <div class="card" id="activeCard" hidden>
+      <h2 id="activeTitle"></h2>
+      <div class="muted" id="activeSub"></div>
+      <a class="btn primary" id="activeBtn"></a>
+    </div>
+
+    <div class="card">
+      <h2>Join a game</h2>
+      <div class="muted">Tap your phone on the brick, or type the code.</div>
+      <form class="row" id="joinForm">
+        <input id="code" maxlength="12" placeholder="CODE" autocomplete="off" autocapitalize="characters" required>
+        <button class="btn primary">Join</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Host a game</h2>
+      <div class="muted" id="hostSub">Start a session for your group (4+ players).</div>
+      <a class="btn secondary" id="hostBtn" href="/host">Host a game</a>
+    </div>
+
+    <div class="card">
+      <h2>Your stats</h2>
+      <div id="stats" class="muted">Loading…</div>
+      <div id="nemesis" class="muted" style="margin-top:12px"></div>
+      <a class="btn secondary" href="/leaderboard">Leaderboard</a>
+    </div>
+
+    <p id="msg"></p>
+  </main>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="config.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+    async function init() {
+      // 1. Must be logged in
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) { location.href = "/login?next=/dashboard"; return; }
+      const me = session.user.id;
+
+      // 2. Name (textContent, so names can't run code)
+      const { data: profile } = await sb.from("profiles").select("username, is_guest").eq("id", me).single();
+      $("name").textContent = profile?.username ?? "player";
+
+      // 3. Guests can play but not host
+      if (profile?.is_guest) {
+        $("hostSub").textContent = "Guests can't host. Make an account to start your own games.";
+        $("hostBtn").textContent = "Make an account";
+        $("hostBtn").href = "/login";
+      }
+
+      // 4. Already in a game? Show a shortcut back to it.
+      const { data: hosting } = await sb.from("games").select("code, status")
+        .eq("host_id", me).in("status", ["waiting", "live"]).limit(1).maybeSingle();
+      const { data: playing } = await sb.from("results").select("game, games!inner(status)")
+        .eq("user_id", me).in("games.status", ["waiting", "live"]).limit(1).maybeSingle();
+
+      if (hosting) {
+        showActive(`You're hosting ${hosting.code}`, hosting.status === "live" ? "Game is live" : "Waiting for players", "Open host controls", "/host");
+      } else if (playing) {
+        showActive(`You're in game ${playing.game}`, playing.games.status === "live" ? "Game is live. Get back in!" : "Waiting to start", "Rejoin", "/join?room=" + encodeURIComponent(playing.game));
+      }
+
+      // 5. Stats (guests aren't on the leaderboard)
+      const { data: s } = await sb.from("leaderboard").select("*").eq("id", me).maybeSingle();
+      if (!s) {
+        $("stats").textContent = profile?.is_guest ? "Guest stats aren't saved." : "No finished games yet. Go play one!";
+      } else {
+        const sol = Number(s.total_sol ?? 0);
+        const grid = el("div", "stats");
+        for (const [label, value, cls] of [
+          ["Games", s.games],
+          ["Pickups / hour", s.pickups_per_hour],
+          ["Clean games", `${s.clean_pct}%`],
+          ["SOL won / lost", `${sol >= 0 ? "+" : ""}${sol.toFixed(3)}`, sol >= 0 ? "up" : "down"],
+        ]) {
+          const box = el("div", "stat");
+          const b = el("b", cls || "", value);
+          box.append(b, el("span", "muted", label));
+          grid.append(box);
+        }
+        $("stats").replaceWith(grid);
+      }
+
+      // 6. Nemesis: the person you lose to most
+      const { data: nem } = await sb.from("rivalries").select("opponent, wins, losses")
+        .eq("user_id", me).gt("losses", 0).order("losses", { ascending: false }).limit(1).maybeSingle();
+      if (nem) $("nemesis").textContent = `😈 Nemesis: ${nem.opponent} (you're ${nem.wins}–${nem.losses} against them)`;
+    }
+
+    function showActive(title, sub, button, href) {
+      $("activeTitle").textContent = title;
+      $("activeSub").textContent = sub;
+      $("activeBtn").textContent = button;
+      $("activeBtn").href = href;
+      $("activeCard").hidden = false;
+    }
+
+    // Join with a code (letters and numbers only)
+    $("joinForm").onsubmit = e => {
+      e.preventDefault();
+      const code = $("code").value.trim().toUpperCase();
+      if (!/^[A-Z0-9]{4,12}$/.test(code)) { $("msg").textContent = "Codes are letters and numbers, like 4F2A9C."; return; }
+      location.href = "/join?room=" + code;
+    };
+
+    $("logout").onclick = async () => { await sb.auth.signOut(); location.href = "/"; };
+
+    init();
+  </script>
+</body>
+</html>

@@ -27,7 +27,7 @@
     <p class="tag">Put the phone down. We're watching.</p>
 
     <div class="cta">
-      <a class="btn primary" href="/login">Log in / Sign up</a>
+      <a class="btn primary" id="mainBtn" href="/login">Log in / Sign up</a>
       <a class="btn secondary" href="/leaderboard">View the leaderboard</a>
     </div>
 
@@ -39,5 +39,13 @@
 
     <footer>Built for the Fall 2026 PSU hackathon.</footer>
   </main>
+  <script src="vendor/supabase.js"></script>
+  <script src="config.js"></script>
+  <script>
+    // Already logged in? The main button takes you to your dashboard.
+    sb.auth.getSession().then(({ data }) => {
+      if (data.session) { const b = document.getElementById("mainBtn"); b.textContent = "Go to dashboard"; b.href = "/dashboard"; }
+    });
+  </script>
 </body>
 </html>

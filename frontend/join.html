@@ -62,7 +62,7 @@
 
       const { data: game } = await sb.from("games").select("status").eq("code", room).maybeSingle();
       if (!room || !game || game.status === "ended") {
-        show("🚫", "No game running", "Tap the brick to start a new one.");
+        show("🚫", "No game running", "Tap the brick, or go to buzzkill.study/dashboard to join with a code.");
         return;
       }
       send("join");

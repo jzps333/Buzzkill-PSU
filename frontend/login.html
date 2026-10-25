@@ -68,8 +68,8 @@
     // Where to go after logging in. Only pages on THIS site are allowed,
     // so nobody can make a link that logs you in and sends you to a fake site.
     function nextPage() {
-      const next = new URLSearchParams(location.search).get("next") || "/leaderboard";
-      return next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/leaderboard";
+      const next = new URLSearchParams(location.search).get("next") || "/dashboard";
+      return next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/dashboard";
     }
     const done = () => location.href = nextPage();
 
