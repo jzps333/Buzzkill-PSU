@@ -46,6 +46,7 @@ HEADERS = {"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}"}
 
 code = None          # current room code
 auto_for = None      # the game a countdown was started for, so it only happens once
+last_count = None    # (game, players) last printed to the log
 game = {}            # its games row
 players = []         # its results rows
 page = 0             # LCD page while live
@@ -159,7 +160,7 @@ def new_game(mode):
             except Exception as e:
                 print("speaker not set (is speaker.py running?):", e)
             tag(f"{SITE}/join?room={code}")
-            print("new", mode, "game", code)
+            print("new", mode, "game", code, flush=True)
             say(("New team game. " if mode == "teams" else "New game. ") + pin_line())
         except Exception as e:
             print("create failed:", e)
@@ -274,7 +275,10 @@ def refresh():
 
 def auto_start():
     """Enough players joined: count down 5 seconds, then start (same as a double tap)."""
-    global auto_for
+    global auto_for, last_count
+    if game.get("status") == "waiting" and (code, len(players)) != last_count:
+        last_count = (code, len(players))
+        print(f"lobby {code}: {len(players)} player(s) in (auto-start at {AUTO_START or 'off'})", flush=True)
     if not AUTO_START or game.get("status") != "waiting" or len(players) < AUTO_START or auto_for == code:
         return
     auto_for = code
