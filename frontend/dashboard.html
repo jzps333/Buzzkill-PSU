@@ -69,6 +69,8 @@
     .stat { padding: 14px 16px; border-radius: 14px; background: var(--sand); }
     .stat b { display: block; font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
     .stat span { font-size: 13px; color: var(--ink-2); font-weight: 600; }
+    .stat b.name { font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stats-note { margin: 10px 0 0; font-size: 12px; color: var(--ink-2); }
     .up { color: var(--green); } .down { color: var(--red); }
     .nemesis { margin-top: 12px; padding: 12px 16px; border-radius: 14px; background: var(--peach); font-size: 14px; font-weight: 600; }
     .empty { margin-top: 10px; font-size: 14px; color: var(--ink-2); }
@@ -150,6 +152,7 @@
   <script src="config.js"></script>
   <script src="device.js"></script>
   <script src="buzz.js"></script>
+  <script src="stats.js"></script>
   <script>
     const $ = id => document.getElementById(id);
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -193,18 +196,31 @@
         $("stats").textContent = profile?.is_guest ? "Guest stats aren't saved. Make an account to keep them." : "No finished games yet. Go play one!";
       } else {
         const sol = Number(s.total_sol ?? 0);
+        const x = await BuzzStats.load().then(r => r.players.get(me)).catch(() => null);
         const grid = el("div", "stats");
-        for (const [label, value, cls] of [
+        const items = [
           ["Games", s.games],
           ["Pickups / hour", s.pickups_per_hour],
           ["Clean games", `${s.clean_pct}%`],
           ["SOL won / lost", `${sol >= 0 ? "+" : ""}${sol.toFixed(3)}`, sol >= 0 ? "up" : "down"],
-        ]) {
+        ];
+        if (x) items.push(
+          ["Games won", `${x.wins} (${Math.round(x.winRate * 100)}%)`],
+          ["Time studied", BuzzStats.time(x.minutes * 60)],
+          ["Longest focus", BuzzStats.time(x.longestFocus)],
+          ["Fastest fold", x.fastestFold == null ? "Never" : BuzzStats.time(x.fastestFold)],
+          ["Best clean streak", `${x.bestCleanStreak} game${x.bestCleanStreak === 1 ? "" : "s"}`],
+          ["Current clean streak", `${x.cleanStreak} game${x.cleanStreak === 1 ? "" : "s"}`],
+          [x.mostPlayedWith ? `Most played with (${x.mostPlayedWith.n} games)` : "Most played with", x.mostPlayedWith?.name ?? "–", "name"],
+          [x.mostWonAgainst ? `Beaten most (${x.mostWonAgainst.n} times)` : "Beaten most", x.mostWonAgainst?.name ?? "–", "name"],
+        );
+        for (const [label, value, cls] of items) {
           const box = el("div", "stat");
           box.append(el("b", cls || "", value), el("span", "", label));
           grid.append(box);
         }
         $("stats").replaceWith(grid);
+        if (x) grid.after(el("p", "stats-note", "Focus times count from the start of a game to your first pickup. A clean game counts in full."));
       }
 
       // 6. Nemesis: the person you lose to most
