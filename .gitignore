@@ -1,3 +1,4 @@
 # Secrets: never commit these
 .env
 *.env
+__pycache__/
