@@ -19,7 +19,8 @@ const ALLOWED_ORIGINS = ["https://www.buzzkill.study", "https://buzzkill.study",
 const VOICE = Deno.env.get("ELEVENLABS_VOICE_ID") ?? "JBFqnCBsd6RMkjVDRZzb";      // "George"
 // "-latest" names always point at Google's current model, so they don't break when old ones shut down
 // Fastest first: Flash-Lite writes a 1-line roast in well under a second
-const MODELS = [Deno.env.get("GEMINI_MODEL"), "gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3-flash-preview"]
+// The smarter Flash model writes funnier lines; Flash-Lite is the fast backup. (The next line is written while one plays, so speed matters less.)
+const MODELS = [Deno.env.get("GEMINI_MODEL"), "gemini-flash-latest", "gemini-3-flash-preview", "gemini-flash-lite-latest", "gemini-3.1-flash-lite"]
   .filter(Boolean) as string[];
 
 const FALLBACKS = [
@@ -94,16 +95,18 @@ const ANGLES = [
 const SOUNDS = ["Hahaha", "Ooooh", "Yikes", "Oof", "Wow", "Ding ding ding", "Tsk tsk", "Uh oh"];
 const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 
-async function writeRoast(facts: string, name: string, avoid: string[] = [], again = 0): Promise<string> {
+async function writeRoast(facts: string, name: string, avoid: string[] = [], again = 0, seed = 0): Promise<string> {
   const key = Deno.env.get("GEMINI_API_KEY");
   const v3 = VOICES[0].model.includes("v3");
-  const style = pick(STYLES);
+  const style = STYLES[(seed + again) % STYLES.length];      // a different voice for each line of the same pickup
   const sound = Math.random() < 0.5 ? pick(SOUNDS) : null;
   const prompt = `You are Buzz, a funny bee who gently roasts college students out loud when they pick up their phone during a group study session. Everyone at the table hears it.
 
-Write ONE brand-new line, 8 to 22 words, that uses their name.
+Write ONE brand-new line, 6 to 16 words, that uses their name. Short and punchy: one joke, then stop.
+Don't read out statistics. Use at most one number, only if it makes the joke funnier, and say it naturally ("three times", "barely ten minutes").
 Voice for this line: ${style.who}.
 Focus on: ${pick(ANGLES)}.
+Only sound like a news anchor if that is your voice for this line.
 ${again ? `They STILL haven't put the phone down (this is line ${again + 1} while they hold it). Comment on that.\n` : ""}${sound ? `Start or end with the sound "${sound}".` : "No sound effect this time."}
 Keep it playful and clever, like teasing a friend. Nothing vulgar, no swearing, not over the top, never cruel.
 Never mention race, gender, religion, sexuality, body, looks, health, money or family.
@@ -227,7 +230,9 @@ Deno.serve(async (req) => {
   if (!target) return json(req, { error: "Player not in this game" }, 404);
 
   const name = nameOf(userId);
-  const minutes = g.start_time ? Math.max(1, Math.round((Date.now() - new Date(g.start_time).getTime()) / 60000)) : 1;
+  const { data: gEnd } = await admin.from("games").select("end_time").eq("code", game).maybeSingle();
+  const until = gEnd?.end_time ? new Date(gEnd.end_time).getTime() : Date.now();
+  const minutes = g.start_time ? Math.max(1, Math.round((until - new Date(g.start_time).getTime()) / 60000)) : 1;
   const others = players.filter(p => p.user_id !== userId)
     .map(p => `${p.profiles?.username ?? "someone"}: ${p.pickups} pickups`).join(", ");
   let facts = `- ${name} just got caught. This is pickup number ${target.pickups} for them.\n` +
@@ -244,7 +249,9 @@ Deno.serve(async (req) => {
   // ---------- 5. Write it, speak it ----------
   const avoid = Array.isArray(body.avoid) ? body.avoid.filter((a: unknown) => typeof a === "string").slice(-10).map((a: string) => a.slice(0, 200)) : [];
   const again = Math.max(0, Math.min(20, Number(body.again) || 0));   // how many lines they've already heard for this pickup
-  const text = await writeRoast(facts, name, avoid, again);
+  // Start each pickup on a random voice, then step through the others
+  const seed = [...(game + userId + target.pickups)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const text = await writeRoast(facts, name, avoid, again, seed);
   const audio = await speak(text);
   if (!audio) return json(req, { text: plain(text), problems });   // no voice: caller reads the text itself
 
