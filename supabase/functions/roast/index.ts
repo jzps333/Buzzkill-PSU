@@ -23,10 +23,22 @@ const MODELS = [Deno.env.get("GEMINI_MODEL"), "gemini-flash-lite-latest", "gemin
   .filter(Boolean) as string[];
 
 const FALLBACKS = [
-  (n: string) => `${n} picked up their phone. Your future self is disappointed.`,
-  (n: string) => `Attention everyone. ${n} could not last. Shake it off, ${n}.`,
-  (n: string) => `${n} is doomscrolling again. Put it down.`,
-  (n: string) => `Wow ${n}. That notification was not important.`,
+  (n: string) => `${n}, the textbook just asked where you went.`,
+  (n: string) => `And ${n} fumbles the focus! The crowd goes quiet.`,
+  (n: string) => `${n}. I'm not mad. I'm just a little disappointed.`,
+  (n: string) => `Breaking news: phone one, ${n} zero.`,
+  (n: string) => `Here we see the wild ${n}, unable to resist the glowing rectangle.`,
+  (n: string) => `Survey says: ${n} picked up the phone. Uh oh.`,
+  (n: string) => `Ooooh, ${n}. Whatever it was, it could have waited.`,
+  (n: string) => `${n}, your notes are feeling very ignored right now.`,
+  (n: string) => `Ding ding ding! ${n} is our first contestant to crack.`,
+  (n: string) => `Hold on, ${n}. Is the phone studying for you?`,
+  (n: string) => `Tsk tsk, ${n}. So close to a clean game.`,
+  (n: string) => `${n} has left the study session. Physically still here, though.`,
+  (n: string) => `This just in: ${n}'s focus has been reported missing.`,
+  (n: string) => `Yikes, ${n}. Everyone saw that.`,
+  (n: string) => `${n}, put it down and nobody has to talk about this.`,
+  (n: string) => `Wow, ${n}. Bold move picking it up right in front of the bee.`,
 ];
 
 // The project's secret keys (new-style sb_secret_ keys come as JSON, plus the old service_role key)
@@ -55,47 +67,50 @@ const json = (req: Request, body: unknown, status = 200) =>
 // ---------- 1. Gemini writes the roast ----------
 let problems: string[] = [];        // why the AI part failed (sent back to the host so we can fix it)
 
-// A different style and angle every time, so no two roasts sound alike
+// A different voice every time: Buzz rotates through these characters so no two lines sound alike
 const STYLES = [
-  "a hyped sports commentator calling a terrible play",
-  "a calm nature documentary narrator watching a creature fail",
-  "a deeply disappointed gym coach",
-  "a breaking-news anchor with urgent news",
-  "a cheesy game show host announcing a loser",
-  "a dramatic movie trailer voice",
-  "a stern courtroom judge reading the sentence",
-  "an airport announcer making a public announcement",
-  "a motivational speaker who has completely given up",
-  "a Shakespearean actor delivering a tragedy",
-  "a smug villain who saw this coming",
-  "a sarcastic tour guide pointing out a landmark",
+  { who: "a dry, witty friend who teases with clever understatement",
+    eg: ["Alex, the textbook misses you. It told me.", "Twelve minutes. A personal record for Alex. A low one, but a record."] },
+  { who: "a hyped sports announcer calling the play-by-play",
+    eg: ["And Alex reaches for the phone! A costly turnover at the twelve-minute mark!", "Sam pulls ahead while Alex fumbles the focus!"] },
+  { who: "a gentle, disappointed parent (guilt, never anger)",
+    eg: ["Alex. I'm not mad. I'm just disappointed.", "We talked about this, Alex. The phone can wait."] },
+  { who: "a calm nature documentary narrator",
+    eg: ["Here we observe the Alex in its natural habitat, reaching for the glowing rectangle once again.", "Fascinating. The Alex cannot resist the phone for even ten minutes."] },
+  { who: "a breaking-news anchor",
+    eg: ["Breaking news: phone wins again. Alex, zero.", "This just in: Alex's focus has been reported missing."] },
+  { who: "a cheerful game show host",
+    eg: ["Survey says: Alex picked up the phone! Better luck next round!", "Alex, come on down! You've won absolutely nothing."] },
 ];
 const ANGLES = [
-  "how fast they cracked",
-  "how they compare to everyone else at the table",
-  "what they were probably looking at on the phone",
-  "their pickup count and where it is heading",
-  "the rest of the table now judging them",
-  "the grade they are about to get",
-  "how weak their willpower is",
+  "how quickly they gave in",
+  "how they compare to someone else at the table (use a real name from the facts)",
+  "their pickup count",
+  "the studying they were supposed to be doing",
+  "the rest of the table watching",
+  "the phone itself (what could possibly be so important)",
+  "how long they had lasted before this",
 ];
-const SOUNDS = ["Hahaha", "Ha!", "Ooooh", "Yikes", "Pfft", "Wow", "Bzzzz", "Ding ding ding", "Boooo", "Tsk tsk tsk", "Oof", "Mwahaha"];
+const SOUNDS = ["Hahaha", "Ooooh", "Yikes", "Oof", "Wow", "Ding ding ding", "Tsk tsk", "Uh oh"];
 const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 
-async function writeRoast(facts: string, name: string, avoid: string[] = []): Promise<string> {
+async function writeRoast(facts: string, name: string, avoid: string[] = [], again = 0): Promise<string> {
   const key = Deno.env.get("GEMINI_API_KEY");
   const v3 = VOICES[0].model.includes("v3");
-  const prompt = `You are Buzz, a savage, sarcastic bee who roasts college students for touching their phone during a group study session. A speaker reads your line out loud to the whole table.
+  const style = pick(STYLES);
+  const sound = Math.random() < 0.5 ? pick(SOUNDS) : null;
+  const prompt = `You are Buzz, a funny bee who gently roasts college students out loud when they pick up their phone during a group study session. Everyone at the table hears it.
 
-Write ONE roast, at most 25 words, using their name.
-This time, talk like ${pick(STYLES)}, and focus on ${pick(ANGLES)}.
-Be brutal and funny. Use the facts below.
-Rules: PG-13, no swear words, no slurs. Never mention race, gender, religion, sexuality, body, looks, health, money or family.
-Plain spoken text: no quotes, emojis or hashtags.
-Sound effects: write one or two spoken sounds as words, like ${SOUNDS.slice().sort(() => Math.random() - 0.5).slice(0, 4).join(", ")}. Put one at the start or the end.
-${v3 ? `You may also add one voice tag that changes HOW it's said (not read out): ${TAGS.map(t => `[${t}]`).join(" ")}
-` : ""}Example (do not copy): Ooooh, Alex. Two minutes. A new world record in giving up. Hahaha!
-${avoid.length ? `Do NOT reuse the jokes or wording of these earlier roasts:\n${avoid.map(a => "- " + a).join("\n")}\n` : ""}
+Write ONE brand-new line, 8 to 22 words, that uses their name.
+Voice for this line: ${style.who}.
+Focus on: ${pick(ANGLES)}.
+${again ? `They STILL haven't put the phone down (this is line ${again + 1} while they hold it). Comment on that.\n` : ""}${sound ? `Start or end with the sound "${sound}".` : "No sound effect this time."}
+Keep it playful and clever, like teasing a friend. Nothing vulgar, no swearing, not over the top, never cruel.
+Never mention race, gender, religion, sexuality, body, looks, health, money or family.
+Plain spoken text only: no quotes, emojis, hashtags or stage directions.
+${v3 ? `You may add one voice tag that changes HOW it's said (not read out): ${TAGS.map(t => `[${t}]`).join(" ")}\n` : ""}Examples of this voice (for the feel only, do not reuse them):
+- ${style.eg.join("\n- ")}
+${avoid.length ? `Lines already said this game. Use completely different jokes, words and structure:\n${avoid.map(a => "- " + a).join("\n")}\n` : ""}
 Facts:
 ${facts}`;
 
@@ -108,7 +123,7 @@ ${facts}`;
           headers: { "Content-Type": "application/json", "x-goog-api-key": key },
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 1.3, maxOutputTokens: 2048,   // room in case it thinks anyway
+            generationConfig: { temperature: 1.15, topP: 0.95, maxOutputTokens: 2048,   // room in case it thinks anyway
                                 ...(thinking ? { thinkingConfig: { thinkingLevel: "minimal" } } : {}) },
           }),
         });
@@ -227,8 +242,9 @@ Deno.serve(async (req) => {
   }
 
   // ---------- 5. Write it, speak it ----------
-  const avoid = Array.isArray(body.avoid) ? body.avoid.filter((a: unknown) => typeof a === "string").slice(-6).map((a: string) => a.slice(0, 200)) : [];
-  const text = await writeRoast(facts, name, avoid);
+  const avoid = Array.isArray(body.avoid) ? body.avoid.filter((a: unknown) => typeof a === "string").slice(-10).map((a: string) => a.slice(0, 200)) : [];
+  const again = Math.max(0, Math.min(20, Number(body.again) || 0));   // how many lines they've already heard for this pickup
+  const text = await writeRoast(facts, name, avoid, again);
   const audio = await speak(text);
   if (!audio) return json(req, { text: plain(text), problems });   // no voice: caller reads the text itself
 

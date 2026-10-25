@@ -217,10 +217,22 @@
     $("bee").classList.add("bz-float");
 
     const ROASTS = [
-      n => `${n} picked up their phone. Your future self is disappointed.`,
-      n => `Attention everyone. ${n} could not last. Shake it off, ${n}.`,
-      n => `${n} is doomscrolling again. Put it down.`,
-      n => `Wow ${n}. That notification was not important.`,
+      n => `${n}, the textbook just asked where you went.`,
+      n => `And ${n} fumbles the focus! The crowd goes quiet.`,
+      n => `${n}. I'm not mad. I'm just a little disappointed.`,
+      n => `Breaking news: phone one, ${n} zero.`,
+      n => `Here we see the wild ${n}, unable to resist the glowing rectangle.`,
+      n => `Survey says: ${n} picked up the phone. Uh oh.`,
+      n => `Ooooh, ${n}. Whatever it was, it could have waited.`,
+      n => `${n}, your notes are feeling very ignored right now.`,
+      n => `Ding ding ding! ${n} is our first contestant to crack.`,
+      n => `Hold on, ${n}. Is the phone studying for you?`,
+      n => `Tsk tsk, ${n}. So close to a clean game.`,
+      n => `${n} has left the study session. Physically still here, though.`,
+      n => `This just in: ${n}'s focus has been reported missing.`,
+      n => `Yikes, ${n}. Everyone saw that.`,
+      n => `${n}, put it down and nobody has to talk about this.`,
+      n => `Wow, ${n}. Bold move picking it up right in front of the bee.`,
     ];
 
     let code = null, status = null, players = [], game = {}, mode = "solo";
@@ -436,8 +448,10 @@
 
     // ---------- AI roasts: Gemini writes one per pickup, ElevenLabs voices it (the "roast" Supabase function) ----------
     // One roast per pickup (saves credits). In teams, the whole busted team shares the roast of whoever slipped.
-    const recentRoasts = [];          // last few roast lines, sent along so the next one is different
-    const roasts = {};                 // bust key -> "loading" | { url (mp3), text }
+    // A brand-new line every time: each pickup gets a queue of fresh lines. While one plays,
+    // the next is already being written, so there's no gap and nothing repeats.
+    const recentRoasts = [];          // lines already said this game, sent along so the next one is different
+    const roasts = {};                 // bust key -> { queue: [{ url, text }], loading, heard, failed }
     const voice = new Audio();
     let playingFor = null;             // whose roast is playing right now
 
@@ -448,26 +462,32 @@
     }
 
     async function getRoast(key, userId) {
-      roasts[key] = "loading";
+      const b = roasts[key] ??= { queue: [], loading: false, heard: 0, failed: false };
+      if (b.loading || b.queue.length || b.failed) return;      // one ready (or on its way) is enough
+      b.loading = true;
       try {
         const { data: { session } } = await sb.auth.getSession();
         const r = await fetch(`${SUPABASE_URL}/functions/v1/roast`, {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
-          body: JSON.stringify({ game: code, user_id: userId, avoid: recentRoasts.slice(-6) }),   // so it never repeats itself
+          body: JSON.stringify({ game: code, user_id: userId, avoid: recentRoasts.slice(-10), again: b.heard }),
           signal: AbortSignal.timeout(12000),
         });
         if (!r.ok) throw new Error(r.status);
+        let line;
         if ((r.headers.get("content-type") || "").includes("audio")) {
-          roasts[key] = { url: URL.createObjectURL(await r.blob()), text: decodeURIComponent(r.headers.get("X-Roast-Text") || "") };
-          if (roasts[key].text) recentRoasts.push(roasts[key].text);
+          line = { url: URL.createObjectURL(await r.blob()), text: decodeURIComponent(r.headers.get("X-Roast-Text") || "") };
         } else {
           const j = await r.json();
-          roasts[key] = { text: j.text };                         // no voice: the laptop reads the text
+          line = { text: j.text };                                // no voice: the laptop reads the text
           if (j.problems?.length) $("msg").textContent = "AI roast problem: " + j.problems.join(" | ");
         }
+        if (line.text) recentRoasts.push(line.text);
+        b.queue.push(line);
       } catch {
-        roasts[key] = {};                                         // function down: built-in roasts
+        b.failed = true;                                          // function down: built-in roasts for this pickup
+      } finally {
+        b.loading = false;
       }
     }
 
@@ -487,19 +507,24 @@
       // The person we're roasting started shaking (or is done)? Stop right away.
       if (playingFor && !loud.some(p => p.user_id === playingFor)) stopTalking();
 
-      // Ask for a fresh roast for every new pickup
-      for (const p of loud) if (!roasts[bustKey(p)]) getRoast(bustKey(p), culprit(p));
+      // Keep one fresh line ready for everyone who's busted
+      for (const p of loud) getRoast(bustKey(p), culprit(p));
 
       if (!voice.paused || speechSynthesis.speaking) return;   // still talking
       const p = loud[Math.floor(Math.random() * loud.length)];
-      const r = roasts[bustKey(p)];
-      if (r === "loading") return;                             // AI roast on its way (a second or two)
+      const b = roasts[bustKey(p)];
+      if (!b) return;
+      const line = b.queue.shift();
+      if (!line && !b.failed) return;                          // the next line is still being written (a second or two)
+      b.heard++;
+      getRoast(bustKey(p), culprit(p));                        // start writing the one after this, right now
       playingFor = p.user_id;
-      if (r?.url) {
-        voice.src = r.url;
-        voice.play().catch(() => speak(r.text || fallback(p)));
+      if (line?.url) {
+        voice.src = line.url;
+        voice.onended = () => URL.revokeObjectURL(line.url);
+        voice.play().catch(() => speak(line.text || fallback(p)));
       } else {
-        speak(r?.text || fallback(p));
+        speak(line?.text || fallback(p));
       }
     }, 500);
 

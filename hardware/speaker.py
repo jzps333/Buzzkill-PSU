@@ -30,10 +30,22 @@ from urllib.parse import unquote
 import requests
 
 ROASTS = [
-    "{n} picked up their phone. Your future self is disappointed.",
-    "Attention everyone. {n} could not last. Shake it off, {n}.",
-    "{n} is doomscrolling again. Put it down.",
-    "Wow {n}. That notification was not important.",
+    '{n}, the textbook just asked where you went.',
+    'And {n} fumbles the focus! The crowd goes quiet.',
+    "{n}. I'm not mad. I'm just a little disappointed.",
+    'Breaking news: phone one, {n} zero.',
+    'Here we see the wild {n}, unable to resist the glowing rectangle.',
+    'Survey says: {n} picked up the phone. Uh oh.',
+    'Ooooh, {n}. Whatever it was, it could have waited.',
+    '{n}, your notes are feeling very ignored right now.',
+    'Ding ding ding! {n} is our first contestant to crack.',
+    'Hold on, {n}. Is the phone studying for you?',
+    'Tsk tsk, {n}. So close to a clean game.',
+    '{n} has left the study session. Physically still here, though.',
+    "This just in: {n}'s focus has been reported missing.",
+    'Yikes, {n}. Everyone saw that.',
+    '{n}, put it down and nobody has to talk about this.',
+    'Wow, {n}. Bold move picking it up right in front of the bee.',
 ]
 
 POLL_SECS = 0.5
@@ -126,10 +138,12 @@ def current_game():
     return rows[0] if rows and rows[0]["status"] in ("waiting", "live") else None
 
 
-# ---------- AI roasts: one per pickup ----------
-# In teams, a pickup busts the whole team, and they all share the roast of whoever slipped (alarm_cause).
-recent = []      # last few roast lines, sent along so the next roast is different
-roasts = {}      # bust key -> "loading" | {"mp3": path, "text": ...} | {"text": ...} | {} (failed: built-in roast)
+# ---------- AI roasts: a brand-new line every time ----------
+# Each pickup gets a queue of fresh lines. While one plays, the next is already being written.
+# In teams, a pickup busts the whole team, and they all share the lines for whoever slipped (alarm_cause).
+recent = []      # lines already said this game, sent along so the next one is different
+roasts = {}      # bust key -> {"queue": [{"mp3": path, "text": ...} or {"text": ...}], "loading": bool, "heard": n, "failed": bool}
+line_no = 0
 
 
 def culprit(p):
@@ -142,23 +156,29 @@ def bust_key(p, players):
 
 
 def fetch_roast(key, code, user_id):
+    global line_no
+    b = roasts[key]
     try:
         r = requests.post(f"{BASE}/functions/v1/roast", headers=HEADERS,
-                          json={"game": code, "user_id": user_id, "avoid": recent[-6:]}, timeout=15)
+                          json={"game": code, "user_id": user_id, "avoid": recent[-10:], "again": b["heard"]}, timeout=15)
         r.raise_for_status()
         text = unquote(r.headers.get("X-Roast-Text", ""))
         if r.headers.get("content-type", "").startswith("audio"):
-            path = ROAST_DIR / (key.replace(":", "-") + ".mp3")
+            line_no += 1
+            path = ROAST_DIR / f"{key.replace(':', '-')}-{line_no}.mp3"
             path.write_bytes(r.content)
-            roasts[key] = {"mp3": str(path), "text": text}
+            line = {"mp3": str(path), "text": text}
         else:
-            roasts[key] = {"text": r.json().get("text")}      # no voice credits left: espeak reads it
-        if roasts[key].get("text"):
-            recent.append(roasts[key]["text"])
-        log("AI roast:", roasts[key].get("text"))
+            line = {"text": r.json().get("text")}             # no voice credits left: espeak reads it
+        if line.get("text"):
+            recent.append(line["text"])
+        b["queue"].append(line)
+        log("AI roast:", line.get("text"))
     except Exception as e:
-        log("AI roast failed, using a built-in one:", e)
-        roasts[key] = {}
+        log("AI roast failed, using built-in ones for this pickup:", e)
+        b["failed"] = True
+    finally:
+        b["loading"] = False
 
 
 def ai_voice(text):
@@ -177,12 +197,11 @@ def ai_voice(text):
 
 
 def ask_for_roast(key, code, user_id):
-    if key in roasts:
+    """Keep one fresh line ready (or on its way) for this pickup."""
+    b = roasts.setdefault(key, {"queue": [], "loading": False, "heard": 0, "failed": not AI_ROASTS})
+    if b["loading"] or b["queue"] or b["failed"]:
         return
-    if not AI_ROASTS:
-        roasts[key] = {}
-        return
-    roasts[key] = "loading"
+    b["loading"] = True
     threading.Thread(target=fetch_roast, args=(key, code, user_id), daemon=True).start()
 
 
@@ -300,16 +319,20 @@ def main():
             if not loud:
                 voice.stop()
             else:
-                for p in loud:           # one AI roast per new pickup, fetched in the background
+                for p in loud:           # keep a fresh line ready for everyone who's busted
                     ask_for_roast(bust_key(p, players), code, culprit(p))
                 if not voice.busy():
                     p = random.choice(loud)
-                    r = roasts.get(bust_key(p, players))
-                    if r != "loading":   # AI roast on its way (a second or two)
+                    key = bust_key(p, players)
+                    b = roasts.get(key)
+                    if b and (b["queue"] or b["failed"]):    # otherwise the next line is still being written
+                        line = b["queue"].pop(0) if b["queue"] else {}
+                        b["heard"] += 1
+                        ask_for_roast(key, code, culprit(p))     # start writing the one after this, right now
                         name = (p.get("profiles") or {}).get("username") or "Someone"
-                        text = (r or {}).get("text") or random.choice(ROASTS).format(n=name)
-                        if r and r.get("mp3"):
-                            voice.play(r["mp3"], text, p["user_id"])
+                        text = line.get("text") or random.choice(ROASTS).format(n=name)
+                        if line.get("mp3"):
+                            voice.play(line["mp3"], text, p["user_id"])
                         else:
                             voice.say(text, p["user_id"])
 
