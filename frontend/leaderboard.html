@@ -4,52 +4,236 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Buzzkill · Leaderboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    body { font-family: system-ui, sans-serif; background: #111; color: #eee; max-width: 800px; margin: 40px auto; padding: 0 16px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #2a2a2a; }
-    th { color: #888; font-weight: 500; font-size: 14px; }
-    td.num { font-variant-numeric: tabular-nums; }
-    .up { color: #6fdc8c; } .down { color: #ff7a7a; }
-    .wrap { overflow-x: auto; }
+    :root {
+      --cream: #FFFAEB; --honey: #F5D35A; --sand: #F4EEDC; --peach: #F7E4BF;
+      --ink: #1F1B16; --ink-2: #5E574B; --line: #EAE2CC; --white: #FFFFFF;
+      --silver: #E4E1D8; --bronze: #EFC9A0;
+      --green: #2F8A55; --red: #B42323;
+      --font: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100svh; background: var(--cream); color: var(--ink); font: 500 16px/1.55 var(--font); -webkit-font-smoothing: antialiased; }
+    a { color: inherit; }
+    [hidden] { display: none !important; }
+    :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+
+    .wrap { width: min(1040px, 100% - 32px); margin: 0 auto; }
+
+    /* Nav (same as the landing page) */
+    .nav { display: flex; align-items: center; justify-content: space-between; height: 72px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; text-decoration: none; }
+    .brand-mark { width: 34px; height: 34px; border-radius: 10px; background: var(--honey); display: grid; place-items: center; }
+    .nav-links { display: flex; align-items: center; gap: 22px; font-size: 14px; font-weight: 700; }
+    .nav-links a:not(.pill) { text-decoration: none; }
+    .nav-links a:not(.pill):hover { text-decoration: underline; }
+    .pill { display: inline-flex; align-items: center; height: 38px; padding: 0 16px; border-radius: 999px; background: var(--ink); color: var(--white); font-size: 14px; font-weight: 700; text-decoration: none; }
+    .pill:hover { background: #3A332A; }
+
+    main { padding: 8px 0 72px; }
+
+    /* Header */
+    .head { display: flex; align-items: center; gap: 22px; padding: 28px 32px; border-radius: 28px; background: var(--honey); }
+    .head .bee { flex: none; width: 96px; }
+    .head h1 { margin: 0 0 4px; font-size: clamp(32px, 5.5vw, 48px); line-height: 1.05; font-weight: 800; letter-spacing: -1.2px; }
+    .head p { margin: 0; max-width: 52ch; font-size: 15px; color: #3E3420; }
+    .live { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 13px; font-weight: 700; color: #5A4710; }
+    .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+
+    /* Podium */
+    .podium { display: grid; grid-template-columns: 1fr 1.12fr 1fr; align-items: end; gap: 14px; margin: 26px 0 0; }
+    .spot { padding: 20px 18px; border-radius: 22px; text-align: center; }
+    .spot.p1 { background: var(--honey); padding-top: 28px; padding-bottom: 28px; }
+    .spot.p2 { background: var(--silver); }
+    .spot.p3 { background: var(--bronze); }
+    .spot.me { outline: 3px solid var(--ink); outline-offset: -3px; }
+    .place { display: inline-grid; place-items: center; width: 34px; height: 34px; margin-bottom: 10px; border-radius: 10px; background: var(--ink); color: var(--white); font-size: 15px; font-weight: 800; }
+    .spot .name { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .spot .big { margin: 6px 0 0; font-size: 30px; font-weight: 800; letter-spacing: -.8px; font-variant-numeric: tabular-nums; line-height: 1; }
+    .spot .unit { margin: 2px 0 0; font-size: 12px; font-weight: 700; color: var(--ink-2); }
+    .spot .meta { margin: 10px 0 0; font-size: 13px; color: var(--ink-2); }
+
+    /* Table card */
+    .card { margin-top: 18px; padding: 26px; border: 1px solid var(--line); border-radius: 24px; background: var(--white); }
+    .card h2 { margin: 0 0 2px; font-size: 22px; font-weight: 800; letter-spacing: -.4px; }
+    .card > p { margin: 0 0 16px; font-size: 14px; color: var(--ink-2); }
+    .scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0 6px; }
+    th { padding: 0 14px 4px; text-align: left; font-size: 12px; font-weight: 700; color: var(--ink-2); white-space: nowrap; }
+    th.n, td.n { text-align: right; }
+    td { padding: 12px 14px; background: #FBF8EF; font-size: 14px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    td:first-child { border-radius: 12px 0 0 12px; width: 52px; color: var(--ink-2); font-weight: 800; }
+    td:last-child { border-radius: 0 12px 12px 0; }
+    td.player { font-weight: 800; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+    tr.me td { background: #F8E7A6; }
+    .you { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--ink); color: var(--white); font-size: 11px; font-weight: 800; vertical-align: 1px; }
+    .up { color: var(--green); } .down { color: var(--red); }
+    .empty { padding: 26px 8px; text-align: center; color: var(--ink-2); }
+    .empty a { font-weight: 800; }
+
+    .note { margin: 14px 0 0; font-size: 13px; color: var(--ink-2); }
+
+    @media (max-width: 720px) {
+      .head { flex-direction: column; text-align: center; padding: 26px 20px; }
+      .head .bee { width: 76px; }
+      .podium { grid-template-columns: 1fr; gap: 8px; margin-top: 16px; }
+      .spot, .spot.p1 { order: 0; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 14px 16px; text-align: left; }
+      .spot.p1 { order: -1; }
+      .spot .place { margin: 0; }
+      .spot .big { margin: 0; font-size: 22px; }
+      .spot .unit, .spot .meta { display: none; }
+      .card { padding: 20px 12px; }
+      .hide-sm { display: none; }
+      th { padding: 0 8px 4px; }
+      td { padding: 11px 8px; font-size: 13px; }
+      td:first-child { width: 30px; }
+      td.player { max-width: 130px; }
+    }
+    @media (max-width: 560px) {
+      .nav-links a:not(.pill) { display: none; }
+    }
   </style>
 </head>
 <body>
-  <p><a href="/dashboard" style="color:#888;text-decoration:none">← Dashboard</a></p>
-  <h1>Most focused</h1>
-  <p>Ranked by fewest phone pickups per hour.</p>
   <div class="wrap">
-    <table>
-      <thead>
-        <tr><th>#</th><th>Player</th><th>Games</th><th>Pickups/hr</th><th>Clean %</th><th>Avg SOL</th><th>Total SOL</th></tr>
-      </thead>
-      <tbody id="rows"><tr><td colspan="7">Loading…</td></tr></tbody>
-    </table>
+    <nav class="nav">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3c-3.6 0-6 2.7-6 6.3V14l-2 3h16l-2-3V9.3C18 5.7 15.6 3 12 3z" fill="#1F1B16"/><circle cx="12" cy="19.5" r="2.2" fill="#1F1B16"/></svg>
+        </span>
+        Buzzkill
+      </a>
+      <div class="nav-links">
+        <a href="/#how">How it works</a>
+        <a href="/">Join a game</a>
+        <a class="pill" href="/login" id="accountLink">Log in</a>
+      </div>
+    </nav>
   </div>
+
+  <main class="wrap">
+    <section class="head">
+      <div class="bee" id="bee"></div>
+      <div>
+        <h1>Most focused</h1>
+        <p>Ranked by fewest phone pickups per hour across every finished game. Ties go to whoever has more clean games.</p>
+        <span class="live"><i></i>Updates every few seconds</span>
+      </div>
+    </section>
+
+    <section class="podium" id="podium" aria-label="Top three"></section>
+
+    <section class="card">
+      <h2>Everyone</h2>
+      <p>Less picking up. More showing up.</p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Player</th>
+              <th class="n">Pickups / hr</th>
+              <th class="n">Clean</th>
+              <th class="n hide-sm">Games</th>
+              <th class="n hide-sm">Minutes</th>
+              <th class="n hide-sm">SOL</th>
+            </tr>
+          </thead>
+          <tbody id="rows"><tr><td colspan="7" class="empty">Loading the leaderboard…</td></tr></tbody>
+        </table>
+      </div>
+      <p class="note">Guests aren't ranked. <a href="/login?tab=signup">Make an account</a> to get on the board.</p>
+    </section>
+  </main>
 
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
+  <script src="buzz.js"></script>
   <script>
-    // Turn text into safe text, so a username like <script> shows as words instead of running as code
-    const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    const num = n => esc(Number(n));
-    const sol = n => n === null ? "–" : `<span class="${n >= 0 ? "up" : "down"}">${n >= 0 ? "+" : ""}${Number(n).toFixed(3)}</span>`;
+    const $ = id => document.getElementById(id);
+    // textContent everywhere, so a username like <script> shows as words instead of running as code
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    const fmt = n => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
+    Buzz.bee($("bee"));
+    $("bee").classList.add("bz-float");
+
+    let me = null;
+    sb.auth.getSession().then(({ data }) => {
+      const s = data.session;
+      if (!s) return;
+      me = s.user.id;
+      if (!s.user.is_anonymous) { $("accountLink").textContent = "My dashboard"; $("accountLink").href = "/dashboard"; }
+      load();
+    });
+
+    function solCell(n) {
+      const td = el("td", "n hide-sm", n == null ? "–" : `${n >= 0 ? "+" : ""}${Number(n).toFixed(3)}`);
+      if (n != null && Number(n) !== 0) td.classList.add(n > 0 ? "up" : "down");
+      return td;
+    }
+
+    function renderPodium(top) {
+      const podium = $("podium");
+      podium.replaceChildren();
+      podium.hidden = !top.length;
+      // 2nd, 1st, 3rd so first place sits in the middle
+      for (const [p, place] of [[top[1], 2], [top[0], 1], [top[2], 3]]) {
+        if (!p) continue;
+        const spot = el("div", `spot p${place}` + (p.id === me ? " me" : ""));
+        spot.append(
+          el("span", "place", place),
+          el("p", "name", p.username),
+          el("p", "big", fmt(p.pickups_per_hour)),
+          el("p", "unit", "pickups / hr"),
+          el("p", "meta", `${fmt(p.clean_pct)}% clean, ${p.games} game${p.games === 1 ? "" : "s"}`),
+        );
+        podium.append(spot);
+      }
+    }
+
+    function renderRows(data) {
+      const rows = $("rows");
+      rows.replaceChildren();
+      data.forEach((p, i) => {
+        const tr = el("tr", p.id === me ? "me" : "");
+        const name = el("td", "player", p.username);
+        if (p.id === me) name.append(el("span", "you", "You"));
+        tr.append(
+          el("td", "", i + 1),
+          name,
+          el("td", "n", fmt(p.pickups_per_hour)),
+          el("td", "n", `${fmt(p.clean_pct)}%`),
+          el("td", "n hide-sm", p.games),
+          el("td", "n hide-sm", fmt(p.minutes_played)),
+          solCell(p.total_sol),
+        );
+        rows.append(tr);
+      });
+    }
+
+    function message(text, link) {
+      const tr = el("tr");
+      const td = el("td", "empty", text);
+      td.colSpan = 7;
+      if (link) { td.append(" "); const a = el("a", "", link.text); a.href = link.href; td.append(a); }
+      tr.append(td);
+      $("rows").replaceChildren(tr);
+    }
+
+    let lastJson = "";
     async function load() {
       const { data, error } = await sb.from("leaderboard").select("*");
-      const rows = document.getElementById("rows");
-      if (error) { rows.innerHTML = `<tr><td colspan="7">${esc(error.message)}</td></tr>`; return; }
-      if (!data.length) { rows.innerHTML = `<tr><td colspan="7">No finished games yet.</td></tr>`; return; }
-      rows.innerHTML = data.map((p, i) => `
-        <tr>
-          <td>${i + 1}</td>
-          <td>${esc(p.username)}</td>
-          <td class="num">${num(p.games)}</td>
-          <td class="num">${num(p.pickups_per_hour)}</td>
-          <td class="num">${num(p.clean_pct)}%</td>
-          <td class="num">${sol(p.avg_sol)}</td>
-          <td class="num">${sol(p.total_sol)}</td>
-        </tr>`).join("");
+      if (error) { message("Couldn't load the leaderboard. Refresh to try again."); return; }
+      const json = JSON.stringify(data) + me;
+      if (json === lastJson) return;              // nothing changed: don't redraw
+      lastJson = json;
+      if (!data.length) { renderPodium([]); message("No finished games yet.", { text: "Start one", href: "/" }); return; }
+      renderPodium(data.slice(0, 3));
+      renderRows(data);
     }
 
     load();
