@@ -9,7 +9,8 @@
 //
 // Secrets to set in Supabase -> Edge Functions -> Secrets:
 //   GEMINI_API_KEY, ELEVENLABS_API_KEY            (required)
-//   ELEVENLABS_VOICE_ID, GEMINI_MODEL              (optional)
+//   ELEVENLABS_VOICE_ID, ELEVENLABS_MODEL, GEMINI_MODEL   (optional)
+// The Pi can also send { "say": "some text" } to get any short line in the same voice (startup, test).
 // Deploy with "Verify JWT" OFF: the function checks callers itself, so the Pi's secret key works too.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -57,7 +58,10 @@ async function writeRoast(facts: string, name: string): Promise<string> {
 Write ONE roast, at most 25 words, using their name.
 Be brutal and funny about their focus, their phone habit and the scoreboard. Compare them to the others when it stings.
 Rules: PG-13, no swear words, no slurs. Never mention race, gender, religion, sexuality, body, looks, health, money or family.
-Plain spoken text only: no quotes, emojis, hashtags or stage directions.
+Plain spoken text: no quotes, emojis or hashtags.
+Delivery: you may add one or two of these voice tags where they fit (they change HOW the line is said and are not read out):
+${TAGS.map(t => `[${t}]`).join(" ")}
+Example: [sarcastic] Oh wow, Alex. Two minutes. A new world record. [laughs]
 
 Facts:
 ${facts}`;
@@ -85,19 +89,37 @@ ${facts}`;
 }
 
 // ---------- 2. ElevenLabs speaks it ----------
+// Eleven v3 is the most human-sounding model: it acts out the [tags] (sighs, laughs, sarcasm).
+// If v3 fails (not on your plan, busy), Flash v2.5 says it instead (fast, but flatter), with the tags removed.
+const TAGS = ["sarcastic", "laughs", "chuckles", "sighs", "exasperated", "gasps", "mischievously", "whispers", "dramatically"];
+const plain = (text: string) => text.replace(/\[[^\]]*(\]|$)/g, "").replace(/\s+/g, " ").trim();   // tags out (for display / Flash)
+const onlyKnownTags = (text: string) =>
+  text.replace(/\[[^\]]*$/, "").replace(/\[([^\]]*)\]/g, (m, t) => TAGS.includes(t.trim().toLowerCase()) ? `[${t.trim().toLowerCase()}]` : "").replace(/\s+/g, " ").trim();
+
+const VOICES = [
+  // v3 stability: 0 = Creative, 0.5 = Natural, 1 = Robust. Natural acts out the tags without going off script.
+  { model: Deno.env.get("ELEVENLABS_MODEL") ?? "eleven_v3", settings: { stability: 0.5, similarity_boost: 0.8 } },
+  { model: "eleven_flash_v2_5", settings: { stability: 0.35, similarity_boost: 0.8, style: 0.4, use_speaker_boost: true } },
+];
+
 async function speak(text: string): Promise<ArrayBuffer | null> {
   const key = Deno.env.get("ELEVENLABS_API_KEY");
   if (!key) return null;
-  try {
-    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE}?output_format=mp3_44100_128`, {
-      method: "POST",
-      headers: { "xi-api-key": key, "Content-Type": "application/json", Accept: "audio/mpeg" },
-      body: JSON.stringify({ text, model_id: Deno.env.get("ELEVENLABS_MODEL") ?? "eleven_flash_v2_5" }),
-    });
-    return r.ok ? await r.arrayBuffer() : null;
-  } catch {
-    return null;
+  for (const v of VOICES) {
+    const line = v.model.includes("v3") ? onlyKnownTags(text) : plain(text);
+    try {
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE}?output_format=mp3_44100_128`, {
+        method: "POST",
+        headers: { "xi-api-key": key, "Content-Type": "application/json", Accept: "audio/mpeg" },
+        body: JSON.stringify({ text: line, model_id: v.model, voice_settings: v.settings }),
+      });
+      if (r.ok) return await r.arrayBuffer();
+      console.log(`ElevenLabs ${v.model} failed: ${r.status} ${(await r.text()).slice(0, 200)}`);
+    } catch (e) {
+      console.log(`ElevenLabs ${v.model} failed: ${e}`);
+    }
   }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -105,18 +127,28 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json(req, { error: "POST only" }, 405);
 
   const body = await req.json().catch(() => ({}));
+  const secrets = secretKeys();
+  const isPi = secrets.includes(req.headers.get("apikey") ?? "-");
+
+  // ---------- The Pi's own lines ("Buzzkill speaker ready"), in the same voice ----------
+  if (typeof body.say === "string") {
+    if (!isPi) return json(req, { error: "Only the brick can do this" }, 403);
+    const text = body.say.slice(0, 200);
+    const audio = await speak(text);
+    if (!audio) return json(req, { text: plain(text) });
+    return new Response(audio, { headers: { ...cors(req), "Content-Type": "audio/mpeg", "X-Roast-Text": encodeURIComponent(plain(text)) } });
+  }
+
   const game = String(body.game ?? "").toUpperCase();
   const userId = String(body.user_id ?? "");
   if (!/^[A-Z0-9]{4,12}$/.test(game) || !/^[0-9a-f-]{36}$/.test(userId)) return json(req, { error: "Bad request" }, 400);
 
-  const secrets = secretKeys();
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, secrets[0] ?? "", { auth: { persistSession: false } });
 
   // ---------- 3. Who's asking? The Pi (secret key) or the game's host (login token) ----------
   const { data: g } = await admin.from("games").select("code, status, mode, host_id, start_time").eq("code", game).maybeSingle();
   if (!g) return json(req, { error: "No such game" }, 404);
 
-  const isPi = secrets.includes(req.headers.get("apikey") ?? "-");
   if (!isPi) {
     const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
     const { data: u } = token ? await admin.auth.getUser(token) : { data: { user: null } };
@@ -149,9 +181,9 @@ Deno.serve(async (req) => {
   // ---------- 5. Write it, speak it ----------
   const text = await writeRoast(facts, name);
   const audio = await speak(text);
-  if (!audio) return json(req, { text });                      // no voice: caller reads the text itself
+  if (!audio) return json(req, { text: plain(text) });         // no voice: caller reads the text itself
 
   return new Response(audio, {
-    headers: { ...cors(req), "Content-Type": "audio/mpeg", "X-Roast-Text": encodeURIComponent(text), "Cache-Control": "no-store" },
+    headers: { ...cors(req), "Content-Type": "audio/mpeg", "X-Roast-Text": encodeURIComponent(plain(text)), "Cache-Control": "no-store" },
   });
 });
