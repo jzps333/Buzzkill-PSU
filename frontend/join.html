@@ -148,9 +148,8 @@
       }
 
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) {                                         // not logged in → login page, then come back
-        // not signed in → landing page with the PIN filled in, then nickname, then back here
-        location.href = room ? "/?room=" + room : "/";
+      if (!session) {                                         // not logged in → login page, then straight back here
+        location.href = room ? "/login?next=" + encodeURIComponent("/join?room=" + room) : "/";
         return;
       }
       token = session.access_token;

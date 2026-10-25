@@ -148,6 +148,7 @@
 
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
+  <script src="device.js"></script>
   <script src="buzz.js"></script>
   <script>
     const $ = id => document.getElementById(id);
@@ -235,6 +236,7 @@
       e.preventDefault();
       const code = $("code").value.trim().toUpperCase();
       if (!/^[A-Z0-9]{4,12}$/.test(code)) { $("msg").textContent = "Game PINs are letters and numbers, like 4F2A9C."; return; }
+      if (!Device.isPhone()) { $("msg").textContent = `Join from your phone: open buzzkill.study on your phone and enter ${code}.`; return; }
       location.href = "/join?room=" + code;
     };
 

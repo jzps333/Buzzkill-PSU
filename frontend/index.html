@@ -489,11 +489,10 @@
         if (!game) throw new Error("No game with that PIN. Check the brick and try again.");
         if (game.status === "ended") throw new Error("That game has ended. Start a new one on the brick.");
         pin = value;
-        if (session && !session.user.is_anonymous) return enter();   // logged in: skip the nickname
-        $("pinForm").hidden = true;
-        $("nameStep").hidden = false;
-        $("pinShown").textContent = pin;
-        $("nick").focus({ preventScroll: true });
+        if (session) return enter();    // already logged in (account or guest): straight to the game
+        // Not logged in: log in, sign up, or play as guest first, then come straight back to this game
+        say("Log in to join. Taking you there…");
+        location.href = "/login?next=" + encodeURIComponent("/join?room=" + pin);
       } catch (err) {
         say(err.message, true);
         wobble();

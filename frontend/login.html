@@ -159,6 +159,7 @@
         <p id="subtitle">Log in to keep your streak and climb the leaderboard.</p>
       </div>
 
+      <p class="guest-note" id="joinNote" hidden>Log in, sign up, or play as a guest to join game <b></b>. You'll go straight in after.</p>
       <p class="guest-note" id="guestNote" hidden>You're playing as guest <b></b>. Make an account to save your stats and show up on the leaderboard.</p>
 
       <div class="panel">
@@ -336,6 +337,14 @@
         }
       })
       .catch(() => {});
+
+    // Came here from a game PIN? Say which game they're joining.
+    const joining = nextPage().match(/^\/join\?room=([A-Za-z0-9]{4,12})$/);
+    if (joining) {
+      const note = document.getElementById("joinNote");
+      note.querySelector("b").textContent = joining[1].toUpperCase();
+      note.hidden = false;
+    }
 
     // Open a specific tab from a link, e.g. /login?tab=signup
     const startTab = new URLSearchParams(location.search).get("tab");
