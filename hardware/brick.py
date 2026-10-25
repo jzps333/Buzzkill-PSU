@@ -7,6 +7,7 @@ Touch sensor (the speaker answers every tap):
               live    -> says the time left and the scoreboard (and flips the LCD page)
   double tap  no game -> new TEAMS game
               waiting -> start the game (4+ players)
+  (no tap)    the game starts by itself 5 seconds after the 4th player joins (AUTO_START in .env)
   triple tap  end the game and say who won (or close it if it never started)
   hold 3 s    same as triple tap
 
@@ -39,10 +40,12 @@ SB_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 SPEAKER_ID = os.environ.get("SPEAKER_ID", "brick")
 TOUCH_PIN = int(os.environ.get("TOUCH_PIN", "5"))   # Grove port D5 = GPIO 5
+AUTO_START = int(os.environ.get("AUTO_START", "4"))  # start by itself once this many have joined (0 = only by double tap)
 ONLINE = SB_KEY.startswith("sb_secret")
 HEADERS = {"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}"}
 
 code = None          # current room code
+auto_for = None      # the game a countdown was started for, so it only happens once
 game = {}            # its games row
 players = []         # its results rows
 page = 0             # LCD page while live
@@ -266,6 +269,22 @@ def refresh():
         return
     game = rows[0]
     players = get("results", game=f"eq.{code}", select="user_id,pickups,alarm_on,sol_in,profiles(username)")
+    auto_start()
+
+
+def auto_start():
+    """Enough players joined: count down 5 seconds, then start (same as a double tap)."""
+    global auto_for
+    if not AUTO_START or game.get("status") != "waiting" or len(players) < AUTO_START or auto_for == code:
+        return
+    auto_for = code
+    note(f"{len(players)} players in!", "Starting in 5s", lcd.GREEN, 5)
+    say(f"{len(players)} players in. Starting in 5 seconds. Phones face down.")
+
+    def go(c=code):
+        if code == c and game.get("status") == "waiting":
+            start()
+    threading.Timer(5, go).start()
 
 
 def name(p):
@@ -308,7 +327,7 @@ def lobby_line():
     who = f"{n} player{'s' if n != 1 else ''} in" + (f": {names(players)}." if players else ".")
     if n < 4:
         return f"{pin_line()} {who} Need {4 - n} more to start."
-    return f"{pin_line()} {who} Double tap to start."
+    return f"{pin_line()} {who} " + ("Starting now." if AUTO_START and n >= AUTO_START else "Double tap to start.")
 
 
 def time_line():
