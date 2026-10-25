@@ -460,7 +460,9 @@
         if ((r.headers.get("content-type") || "").includes("audio")) {
           roasts[key] = { url: URL.createObjectURL(await r.blob()), text: decodeURIComponent(r.headers.get("X-Roast-Text") || "") };
         } else {
-          roasts[key] = { text: (await r.json()).text };        // no voice credits left: the laptop reads the text
+          const j = await r.json();
+          roasts[key] = { text: j.text };                         // no voice: the laptop reads the text
+          if (j.problems?.length) $("msg").textContent = "AI roast problem: " + j.problems.join(" | ");
         }
       } catch {
         roasts[key] = {};                                         // function down: built-in roasts

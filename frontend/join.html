@@ -274,13 +274,15 @@
       const el = $("phase");
       el.hidden = false;
       el.classList.toggle("break", ph.kind === "break");
-      if (pass > 0)                el.textContent = `🆘 Emergency pass · ${mmss(pass)} left. Face down before it runs out!`;
+      const done = doneLeft();
+      if (done > 0)                el.textContent = `✅ Done shaking! Phone face down in ${Math.ceil(done)}s`;
+      else if (pass > 0)           el.textContent = `🆘 Emergency pass · ${mmss(pass)} left. Face down before it runs out!`;
       else if (ph.kind === "break") el.textContent = `☕ Break · ${mmss(ph.left)} left. Phones are OK!`;
       else if (ph.kind === "grace") el.textContent = `⏰ Break's over! Phones down in ${Math.ceil(ph.left)}s`;
       else if (ph.kind === "focus") el.textContent = `🍅 Focus · ${mmss(ph.left)} until break (${POMO[game.pomo_choice]?.[2] ?? ""})`;
       else                          el.textContent = "🍅 Focus · no breaks this game";
       // Free time just ended (break or pass) and the phone is still up? That's a pickup.
-      const freeNow = ph.free || pass > 0;
+      const freeNow = ph.free || pass > 0 || done > 0;
       if (wasFree && !freeNow && joined && !isDown && !alarmOn) { send("pickup"); showBusted(); }
       wasFree = freeNow;
     }
@@ -390,10 +392,15 @@
 
     // The database decides when your alarm is really on or off
     let alarmOn = false;
+    // After you finish shaking you get 5 seconds to put the phone down (the database gives the same 5 seconds)
+    let doneUntil = 0;
+    const doneLeft = () => Math.max(0, (doneUntil - Date.now()) / 1000);
     function setAlarm(r) {
       mine = r;
       showTeam();
+      const wasOn = alarmOn;
       alarmOn = r.alarm_on && gameStatus === "live";
+      if (wasOn && !alarmOn && passLeft() === 0) { doneUntil = Date.now() + 5000; tick(); }
       if (alarmOn) {
         if (bustedOn) $("passBtn").hidden = !!r.pass_used || r.alarm_cause !== me;
         showBusted();
@@ -408,7 +415,7 @@
         tick();
       } else if (gameStatus === "live") {
         hideBusted();
-        show("happy", "Alarm off", `Pickup #${r.pickups} counted. Put it back face down.`);
+        show("happy", "Alarm off", `Pickup #${r.pickups} counted. You have 5 seconds to put it back face down.`);
       }
     }
 
@@ -459,7 +466,7 @@
       const sim = cosine(v, baseline);
       if (isDown && sim < 0.7) {                         // tilted more than ~45°
         isDown = false;
-        if (gameStatus === "live" && Date.now() - lastPickup > 2000 && !phaseNow().free && passLeft() === 0) {
+        if (gameStatus === "live" && Date.now() - lastPickup > 2000 && !phaseNow().free && passLeft() === 0 && doneLeft() === 0) {
           lastPickup = Date.now();
           send("pickup");
           showBusted();                                   // show Buzz right away; the database confirms

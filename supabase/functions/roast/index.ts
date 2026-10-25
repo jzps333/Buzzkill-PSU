@@ -17,7 +17,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const ALLOWED_ORIGINS = ["https://www.buzzkill.study", "https://buzzkill.study", "https://buzzkill-psu.vercel.app"];
 const VOICE = Deno.env.get("ELEVENLABS_VOICE_ID") ?? "JBFqnCBsd6RMkjVDRZzb";      // "George"
-const MODELS = [Deno.env.get("GEMINI_MODEL"), "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"]
+// "-latest" names always point at Google's current model, so they don't break when old ones shut down
+const MODELS = [Deno.env.get("GEMINI_MODEL"), "gemini-flash-latest", "gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-flash-lite-latest"]
   .filter(Boolean) as string[];
 
 const FALLBACKS = [
@@ -51,6 +52,8 @@ const json = (req: Request, body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors(req), "Content-Type": "application/json" } });
 
 // ---------- 1. Gemini writes the roast ----------
+let problems: string[] = [];        // why the AI part failed (sent back to the host so we can fix it)
+
 async function writeRoast(facts: string, name: string): Promise<string> {
   const key = Deno.env.get("GEMINI_API_KEY");
   const prompt = `You are Buzz, a savage, sarcastic bee who roasts college students for touching their phone during a group study session. A speaker reads your line out loud to the whole table.
@@ -77,14 +80,19 @@ ${facts}`;
             generationConfig: { temperature: 1.1, maxOutputTokens: 120 },
           }),
         });
-        if (!r.ok) continue;                                   // model not available -> try the next one
+        if (!r.ok) {                                           // model not available -> try the next one
+          const why = `Gemini ${model}: ${r.status} ${(await r.text()).slice(0, 150)}`;
+          console.log(why); problems.push(why);
+          continue;
+        }
         const data = await r.json();
         const text = (data?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? "").join("")
           .replace(/["*#_`]/g, "").replace(/\s+/g, " ").trim();
         if (text) return text.slice(0, 240);
-      } catch { /* try the next model */ }
+      } catch (e) { problems.push(`Gemini ${model}: ${e}`); }
     }
   }
+  if (!key) problems.push("GEMINI_API_KEY secret is missing");
   return FALLBACKS[Math.floor(Math.random() * FALLBACKS.length)](name);   // no key / Gemini down
 }
 
@@ -104,7 +112,7 @@ const VOICES = [
 
 async function speak(text: string): Promise<ArrayBuffer | null> {
   const key = Deno.env.get("ELEVENLABS_API_KEY");
-  if (!key) return null;
+  if (!key) { problems.push("ELEVENLABS_API_KEY secret is missing"); return null; }
   for (const v of VOICES) {
     const line = v.model.includes("v3") ? onlyKnownTags(text) : plain(text);
     try {
@@ -114,9 +122,10 @@ async function speak(text: string): Promise<ArrayBuffer | null> {
         body: JSON.stringify({ text: line, model_id: v.model, voice_settings: v.settings }),
       });
       if (r.ok) return await r.arrayBuffer();
-      console.log(`ElevenLabs ${v.model} failed: ${r.status} ${(await r.text()).slice(0, 200)}`);
+      const why = `ElevenLabs ${v.model}: ${r.status} ${(await r.text()).slice(0, 200)}`;
+      console.log(why); problems.push(why);
     } catch (e) {
-      console.log(`ElevenLabs ${v.model} failed: ${e}`);
+      problems.push(`ElevenLabs ${v.model}: ${e}`);
     }
   }
   return null;
@@ -126,6 +135,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(req) });
   if (req.method !== "POST") return json(req, { error: "POST only" }, 405);
 
+  problems = [];
   const body = await req.json().catch(() => ({}));
   const secrets = secretKeys();
   const isPi = secrets.includes(req.headers.get("apikey") ?? "-");
@@ -181,7 +191,7 @@ Deno.serve(async (req) => {
   // ---------- 5. Write it, speak it ----------
   const text = await writeRoast(facts, name);
   const audio = await speak(text);
-  if (!audio) return json(req, { text: plain(text) });         // no voice: caller reads the text itself
+  if (!audio) return json(req, { text: plain(text), problems });   // no voice: caller reads the text itself
 
   return new Response(audio, {
     headers: { ...cors(req), "Content-Type": "audio/mpeg", "X-Roast-Text": encodeURIComponent(plain(text)), "Cache-Control": "no-store" },
