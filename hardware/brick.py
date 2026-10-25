@@ -3,9 +3,10 @@ Roasts on the speaker are speaker.py's job.
 
 Touch sensor (the speaker answers every tap):
   tap         no game -> new SOLO game
-              waiting -> under 4 players: says the PIN and who's in.  4+: starts the game
+              waiting -> says the PIN and who's in (every time, until the game starts)
               live    -> says the time left and the scoreboard (and flips the LCD page)
   double tap  no game -> new TEAMS game
+              waiting -> start the game (4+ players)
   hold 3 s    end the game (or close it if it never started)
 
 LCD: the PIN to join while waiting, then the clock / pomodoro, who's busted, who's winning.
@@ -170,10 +171,16 @@ def on_tap():
     if code is None:
         return new_game("solo")
     status = game.get("status")
-    if status == "waiting" and len(players) < 4:
+    if status == "waiting":
         note(f"PIN {code}", f"{len(players)}/4 joined", lcd.HONEY, 5)
         say(lobby_line())
-    elif status == "waiting":
+    elif status == "live":
+        page += 1
+        say(time_line() + " " + score_line())
+
+
+def start():
+    if game.get("status") == "waiting":
         with lock:
             try:
                 rpc("start_game", {"p_code": code})
@@ -185,14 +192,17 @@ def on_tap():
                     say("Need at least 4 players.")
                 else:
                     note("Can't start", str(e)[:16], lcd.RED)
-    elif status == "live":
-        page += 1
-        say(time_line() + " " + score_line())
 
 
 def on_double():
-    if ONLINE and code is None:
+    if not ONLINE:
+        return on_tap()
+    if code is None:
         new_game("teams")
+    elif game.get("status") == "waiting":
+        start()
+    else:
+        on_tap()
 
 
 def on_hold():
@@ -272,7 +282,9 @@ def pin_line():
 def lobby_line():
     n = len(players)
     who = f"{n} player{'s' if n != 1 else ''} in" + (f": {names(players)}." if players else ".")
-    return f"{pin_line()} {who} Need {4 - n} more to start."
+    if n < 4:
+        return f"{pin_line()} {who} Need {4 - n} more to start."
+    return f"{pin_line()} {who} Double tap to start."
 
 
 def time_line():
@@ -369,7 +381,7 @@ if __name__ == "__main__":
     def released():
         if held[0]:
             return
-        if code is not None:                          # double tap only matters before a game
+        if code is not None and game.get("status") == "live":   # double tap only matters before the game starts
             return on_tap()
         if pending[0] and pending[0].is_alive():
             pending[0].cancel()
