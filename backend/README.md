@@ -5,7 +5,7 @@ Supabase handles logins and the database. There's no server code to run for this
 ## Setup (once)
 
 1. Make a project at supabase.com.
-2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same, in order, with `events.sql`, `security.sql`, `game.sql`. (All are already done for the buzzkill project.)
+2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same, in order, with `events.sql`, `security.sql`, `game.sql`, `shake_10s.sql`, `friends.sql`, `phone_only.sql`. (All are already done for the buzzkill project.)
 3. **Authentication → Sign In / Providers**:
    - Turn **on** "Allow anonymous sign-ins" (this is how guests work).
    - Turn **off** "Confirm email" (so signups work instantly at the hackathon).
@@ -23,6 +23,7 @@ Supabase handles logins and the database. There's no server code to run for this
 | `events` | Every join, pickup and shake from a phone. The Pi listens to it live. |
 | `leaderboard` (view) | Stats calculated from `results`, most focused first |
 | `game_awards` (view) | Titles per game: Iron Will, Doomscroller, First to Fold |
+| `friendships` | Friend requests and friends (pending / accepted). Use `send_friend_request(username)` and `accept_friend_request(id)` |
 | `rivalries` (view) | Your wins/losses vs. every other player. Nemesis = most losses |
 
 ## Stats
@@ -49,6 +50,11 @@ See `hardware/README.md` for what the Pi does.
 sb.from("rivalries").select("*").eq("user_id", myId).gt("losses", 0)
   .order("losses", { ascending: false }).limit(1)
 ```
+
+## Phone-only joining (phone_only.sql)
+
+You can only join a game from a phone (iPhone or Android phone). Laptops, iPads and tablets are blocked in 3 places:
+the PIN box, the join page (which also checks for a real motion sensor before joining), and the database.
 
 ## Google sign-in
 

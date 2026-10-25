@@ -6,12 +6,16 @@
 //   hasMotionSensor()  real check: does the device actually report motion? (laptops don't)
 const Device = {
   isPhone() {
-    // Chrome / Edge / Android tell us directly
+    const ua = navigator.userAgent;
+    // Tablets are not phones. iPads either say "iPad", or pretend to be a Mac but have a touch screen.
+    if (/iPad/i.test(ua)) return false;
+    if (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1) return false;
+    // Chrome / Edge / Android tell us directly (Android tablets report mobile = false)
     if (navigator.userAgentData && typeof navigator.userAgentData.mobile === "boolean") {
       return navigator.userAgentData.mobile;
     }
     // Safari, Firefox: read the browser description
-    return /iPhone|iPod|Android.+Mobile|Mobile/i.test(navigator.userAgent);
+    return /iPhone|iPod|Android.+Mobile|Mobile/i.test(ua);
   },
 
   // Resolves true if real motion readings arrive within `ms`, false otherwise.
