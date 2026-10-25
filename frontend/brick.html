@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzkill · Join the brick</title>
+  <style>
+    :root { --cream: #FFFAEB; --ink: #1F1B16; --ink-2: #5E574B; --honey: #F5D35A; }
+    body { margin: 0; min-height: 100svh; display: grid; place-items: center; background: var(--cream); color: var(--ink);
+           font: 500 17px/1.5 system-ui, -apple-system, sans-serif; text-align: center; padding: 0 16px; }
+    h1 { font-size: 26px; margin: 0 0 6px; }
+    p { color: var(--ink-2); margin: 0; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--honey); animation: pulse 1.2s infinite; }
+    @keyframes pulse { 50% { opacity: .3; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 id="title"><span class="dot"></span> Finding the brick's game…</h1>
+    <p id="hint"></p>
+  </main>
+  <script src="vendor/supabase.js"></script>
+  <script src="config.js"></script>
+  <script>
+    // The NFC sticker / QR code on the brick always points here.
+    // This sends you to whatever game the brick is running right now (games.speaker = 'brick').
+    const BRICK = "brick";
+
+    async function find() {
+      const { data } = await sb.from("games").select("code, status")
+        .eq("speaker", BRICK).in("status", ["waiting", "live"]);
+      const game = (data || []).sort((a, b) => (a.status === "waiting" ? -1 : 1))[0];
+      if (game) { location.replace("/?room=" + encodeURIComponent(game.code)); return; }
+      document.getElementById("title").textContent = "No game on the brick yet";
+      document.getElementById("hint").textContent = "Tap the brick's touch pad to start one. This page joins it automatically.";
+      setTimeout(find, 3000);
+    }
+    find();
+  </script>
+</body>
+</html>

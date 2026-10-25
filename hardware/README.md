@@ -118,6 +118,7 @@ Everything plugs into the Grove Base Hat with the Grove cables. No loose wires.
 | Part | Plug into | Pi pins it uses |
 |---|---|---|
 | Grove NFC (ST25DV64) | any port labeled **I2C** (right column) | SDA / SCL (GPIO 2 / 3) |
+| Grove LCD RGB Backlight v4.0 | another **I2C** port | SDA / SCL (addresses 3e + 62) |
 | Grove Touch Sensor | port **D5** | GPIO 5 (set `TOUCH_PIN` in `.env` if you use another D port: D16 = 16, D18 = 18, ...) |
 | JBL Go 3 | no cable, Bluetooth (it has no aux jack) | |
 
@@ -182,8 +183,30 @@ systemctl --user enable --now buzzkill-speaker buzzkill   # starts now and on ev
 journalctl --user -u buzzkill-speaker -u buzzkill -f       # watch the logs
 ```
 Two programs run on the Pi:
-- `brick.py`: NFC tag + touch sensor. Tap creates a game (and sends its roasts to this Pi's speaker), tap again starts it, hold 3 s ends it.
+- `brick.py`: touch sensor + LCD (+ the NFC board, if it ever gets an antenna).
 - `speaker.py`: plays the roasts for whichever game picked this speaker (see "Bluetooth speaker" above).
+
+**Touch sensor**
+
+| Touch | No game | Waiting for players | Live |
+|---|---|---|---|
+| Tap | new **solo** game | start it (needs 4+) | next LCD page |
+| Double tap | new **teams** game | | |
+| Hold 3 s | | close it | end it + pay out |
+
+**LCD** (`python3 lcd.py "Hello" "World"` to test)
+
+| When | Shows | Color |
+|---|---|---|
+| No game | `BUZZKILL` / `Tap=solo 2x=team` | yellow |
+| Waiting | `PIN 4F2A9C` / `3/4 joined` (switches with `buzzkill.study`) | yellow |
+| Live | pomodoro `FOCUS 18:20` + pickups, then (tap) most focused, most pickups, PIN | green, blue on break |
+| Someone picked up | `BUSTED: Alex` / `Shake to stop!` | red |
+
+Games started from `/host` with the Buzzkill speaker show up on the LCD too.
+
+**NFC stickers / QR code:** write `https://buzzkill-psu.vercel.app/brick` on them (NFC Tools app → Write → URL).
+That page always forwards to the game the brick is running, so one sticker works for every game.
 
 Without the secret key, `brick.py` just points the tag at the website and talks when touched.
 

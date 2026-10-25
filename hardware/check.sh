@@ -52,10 +52,10 @@ EOF
   fi
 fi
 
-# ---------- NFC ----------
-url=$(python3 nfc.py --read 2>/dev/null)
-[ -n "$url" ] && [ "$url" != None ] && ok "NFC tag opens: $url" \
-  || bad "Can't read the NFC tag" "plug it into an I2C port, then: i2cdetect -y 1 (should show 53)"
+# ---------- LCD ----------
+i2c=$(i2cdetect -y 1 2>/dev/null)
+grep -q " 3e" <<<"$i2c" && grep -q " 62" <<<"$i2c" && ok "LCD found" \
+  || bad "LCD not found" "plug it into an I2C port, then: i2cdetect -y 1 (should show 3e and 62)"
 
 # ---------- programs ----------
 for s in buzzkill-speaker buzzkill; do

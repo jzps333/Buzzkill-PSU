@@ -1,20 +1,26 @@
-"""The Buzzkill brick: NFC tag + touch sensor. (Roasts on the speaker are speaker.py's job.)
+"""The Buzzkill brick: touch sensor + LCD screen (+ NFC board if one is plugged in).
+Roasts on the speaker are speaker.py's job.
 
-On boot the tag points to the website. With SUPABASE_SERVICE_KEY in .env the touch sensor runs games:
-  tap (no game)   -> create a game, send its roasts to this Pi's speaker, tag opens the join link
-  tap (waiting)   -> start the game (needs 4+ players)
-  hold 3 seconds  -> end the game, tag goes back to the website
+Touch sensor:
+  tap         no game -> new SOLO game        waiting -> start it (4+ players)        live -> next LCD page
+  double tap  no game -> new TEAMS game
+  hold 3 s    end the game (or close it if it never started)
+
+LCD: the PIN to join while waiting, then the clock / pomodoro, who's busted, who's winning.
+The brick follows any open game that uses this speaker, so games started from /host show up too.
+The NFC sticker / QR code on the brick points at /brick, which always forwards to this game.
 """
 import os
 import subprocess
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 from gpiozero import Button
 
-import nfc
+import lcd
 
 HERE = Path(__file__).resolve().parent
 for line in (HERE / ".env").read_text().splitlines() if (HERE / ".env").exists() else []:
@@ -23,6 +29,7 @@ for line in (HERE / ".env").read_text().splitlines() if (HERE / ".env").exists()
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 SITE = os.environ.get("SITE_URL", "https://buzzkill-psu.vercel.app").rstrip("/")
+JOIN_HINT = os.environ.get("JOIN_HINT", "buzzkill.study")      # shown under the PIN
 SB_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 SPEAKER_ID = os.environ.get("SPEAKER_ID", "brick")
@@ -31,14 +38,46 @@ ONLINE = SB_KEY.startswith("sb_secret")
 HEADERS = {"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}"}
 
 code = None          # current room code
+game = {}            # its games row
+players = []         # its results rows
+page = 0             # LCD page while live
+flash = None         # (top, bottom, color, until): a short message that wins over everything
 lock = threading.Lock()
 
 
+# ---------- screen, voice, NFC ----------
+class NoScreen:
+    def show(self, *a, **k):
+        pass
+
+
+try:
+    screen = lcd.LCD()
+except Exception as e:
+    print("No LCD found (plug it into an I2C port):", e)
+    screen = NoScreen()
+
+
+def note(top, bottom, color, secs=3):
+    global flash
+    flash = (top, bottom, color, time.time() + secs)
+
+
 def say(text):
-    # Short status lines only. While a game is live, speaker.py does the talking.
+    # Short status lines only. While a game is live, speaker.py does the roasting.
     subprocess.Popen(["espeak-ng", "-v", "en-us", "-s", "160", "-a", "200", text])
 
 
+def tag(url):
+    # The Grove NFC board is optional (it needs an antenna). Stickers point at /brick instead.
+    try:
+        import nfc
+        nfc.write_url(url)
+    except Exception:
+        pass
+
+
+# ---------- Supabase (plain REST, secret key = acts as the Pi) ----------
 def rpc(name, args=None):
     r = requests.post(f"{SB_URL}/rest/v1/rpc/{name}", json=args or {}, headers=HEADERS, timeout=10)
     if r.status_code >= 300:
@@ -46,36 +85,58 @@ def rpc(name, args=None):
     return r.json() if r.text else None
 
 
-def game_status():
-    r = requests.get(f"{SB_URL}/rest/v1/games", params={"code": f"eq.{code}", "select": "status"},
-                     headers=HEADERS, timeout=10)
+def get(table, **params):
+    r = requests.get(f"{SB_URL}/rest/v1/{table}", params=params, headers=HEADERS, timeout=10)
     r.raise_for_status()
-    rows = r.json()
-    return rows[0]["status"] if rows else None
+    return r.json()
+
+
+# ---------- touch sensor ----------
+def new_game(mode):
+    global code, page
+    with lock:
+        try:
+            code, page = rpc("create_game", {"p_mode": mode}), 0
+            try:
+                rpc("set_game_speaker", {"p_code": code, "p_speaker": SPEAKER_ID})
+            except Exception as e:
+                print("speaker not set (is speaker.py running?):", e)
+            tag(f"{SITE}/join?room={code}")
+            print("new", mode, "game", code)
+            say("New team game." if mode == "teams" else "New game.")
+            say("Join with the code on the screen.")
+        except Exception as e:
+            print("create failed:", e)
+            note("Can't start game", "Check internet", lcd.RED)
 
 
 def on_tap():
-    global code
+    global page
     if not ONLINE:
-        say("Buzzkill is ready. Tap your phone on the brick.")
+        note("No secret key", "Fill in .env", lcd.RED)
         return
-    with lock:
-        try:
-            if code is None:
-                code = rpc("create_game")
-                try:
-                    rpc("set_game_speaker", {"p_code": code, "p_speaker": SPEAKER_ID})
-                except Exception as e:
-                    print("speaker not set (is speaker.py running?):", e)
-                nfc.write_url(f"{SITE}/join?room={code}")
-                print("game", code)
-                say("New game. Tap your phones on the brick to join.")
-            elif game_status() == "waiting":
+    if code is None:
+        return new_game("solo")
+    status = game.get("status")
+    if status == "waiting":
+        with lock:
+            try:
                 rpc("start_game", {"p_code": code})
                 say("Game on. Phones down. Good luck.")
-        except Exception as e:
-            print("tap failed:", e)
-            say("Need at least 4 players." if "4 players" in str(e) else "Something went wrong.")
+            except Exception as e:
+                print("start failed:", e)
+                if "4 players" in str(e):
+                    note("Need 4 players", f"Have {len(players)}", lcd.RED)
+                    say("Need at least 4 players.")
+                else:
+                    note("Can't start", str(e)[:16], lcd.RED)
+    elif status == "live":
+        page += 1
+
+
+def on_double():
+    if ONLINE and code is None:
+        new_game("teams")
 
 
 def on_hold():
@@ -83,50 +144,134 @@ def on_hold():
         return
     with lock:
         try:
-            if game_status() == "live":
-                rpc("finish_game", {"p_code": code})
-            else:
-                rpc("cancel_game", {"p_code": code})
+            rpc("finish_game" if game.get("status") == "live" else "cancel_game", {"p_code": code})
         except Exception as e:
             print("end failed:", e)
         reset()
+    note("Game over!", "Check your phone", lcd.WHITE, 8)
     say("Game over. Check your phones for results.")
 
 
 def reset():
-    global code
-    code = None
-    nfc.write_url(SITE + "/")
+    global code, game, players
+    code, game, players = None, {}, []
+    tag(SITE + "/brick")
 
 
-def watch_game():
-    # If the game is ended from the website, point the tag back at the home page.
-    # While waiting, clear out players who left the lobby.
+# ---------- keep up with the game ----------
+def refresh():
+    """Find the brick's game and read it. Returns False when there's nothing to show."""
+    global code, game, players
+    if code is None:
+        found = get("games", select="code", speaker=f"eq.{SPEAKER_ID}", status="in.(waiting,live)")
+        if not found:
+            return
+        code = found[0]["code"]                      # e.g. a game started from /host
+    rows = get("games", code=f"eq.{code}", select="status,mode,start_time,pomo_work,pomo_break,speaker")
+    if not rows or rows[0]["status"] in ("ended", "cancelled") or rows[0]["speaker"] != SPEAKER_ID:
+        if rows and rows[0]["status"] == "ended":
+            note("Game over!", "Check your phone", lcd.WHITE, 8)
+        with lock:
+            reset()
+        return
+    game = rows[0]
+    players = get("results", game=f"eq.{code}", select="user_id,pickups,alarm_on,profiles(username)")
+
+
+def name(p):
+    return (p.get("profiles") or {}).get("username") or "player"
+
+
+def clock(secs):
+    secs = max(0, int(secs))
+    return f"{secs // 60}:{secs % 60:02d}"
+
+
+def render():
+    now = time.time()
+    if flash and now < flash[3]:
+        return screen.show(*flash[:3])
+    if not ONLINE:
+        return screen.show("    BUZZKILL", "Add key to .env", lcd.HONEY)
+    if code is None:
+        return screen.show("    BUZZKILL", "Tap=solo 2x=team", lcd.HONEY)
+
+    if game.get("status") == "waiting":
+        n = len(players)
+        team = " TEAMS" if game.get("mode") == "teams" else ""
+        bottom = (JOIN_HINT if int(now / 3) % 2 else
+                  f"{n}/4 joined" if n < 4 else f"{n} in! Tap=start")
+        return screen.show(f"PIN {code}{team}", bottom, lcd.HONEY)
+
+    # Live
+    busted = [p for p in players if p["alarm_on"]]
+    if busted:
+        return screen.show("BUSTED: " + ", ".join(name(p) for p in busted), "Shake to stop!", lcd.RED)
+
+    start = datetime.fromisoformat(game["start_time"]) if game.get("start_time") else datetime.now(timezone.utc)
+    t = (datetime.now(timezone.utc) - start).total_seconds()
+    w, b = (game.get("pomo_work") or 0) * 60, (game.get("pomo_break") or 0) * 60
+    on_break = False
+    if w and b:
+        pos = t % (w + b)
+        on_break = pos >= w
+        timer = f"BREAK {clock(w + b - pos)}" if on_break else f"FOCUS {clock(w - pos)}"
+    else:
+        timer = f"LIVE {clock(t)}"
+    total = sum(p["pickups"] for p in players)
+    ranked = sorted(players, key=lambda p: p["pickups"])
+    pages = [
+        (timer, f"Pickups: {total}"),
+        ("Most focused:", f"{name(ranked[0])} ({ranked[0]['pickups']})" if ranked else "-"),
+        ("Most pickups:", f"{name(ranked[-1])} ({ranked[-1]['pickups']})" if ranked else "-"),
+        (f"PIN {code}", f"{len(players)} playing"),
+    ]
+    screen.show(*pages[page % len(pages)], lcd.BLUE if on_break else lcd.GREEN)
+
+
+def main_loop():
+    last_fetch = last_prune = 0
     while True:
-        time.sleep(3)
-        if code is None:
-            continue
+        now = time.time()
+        if ONLINE and now - last_fetch > 1:
+            last_fetch = now
+            try:
+                refresh()
+                if code and game.get("status") == "waiting" and now - last_prune > 8:
+                    last_prune = now
+                    rpc("prune_lobby", {"p_code": code})     # drop players who closed their browser
+            except Exception as e:
+                print("refresh failed:", e)
         try:
-            status = game_status()
-            if status in (None, "ended", "cancelled"):
-                with lock:
-                    reset()
-            elif status == "waiting":
-                rpc("prune_lobby", {"p_code": code})     # drop players who closed their browser
+            render()
         except Exception as e:
-            print("check failed:", e)
+            print("screen failed:", e)
+        time.sleep(0.3)
 
 
+# ---------- start ----------
 if __name__ == "__main__":
-    nfc.write_url(SITE + "/")
-    print("Tag ready:", nfc.read_url(), "| online mode:", ONLINE)
+    tag(SITE + "/brick")
+    print("online mode:", ONLINE, "| touch pin:", TOUCH_PIN)
 
     touch = Button(TOUCH_PIN, pull_up=None, active_state=True, hold_time=3)
     held = [False]
+    pending = [None]          # a tap waiting to see if a second one follows
+
+    def released():
+        if held[0]:
+            return
+        if code is not None:                          # double tap only matters before a game
+            return on_tap()
+        if pending[0] and pending[0].is_alive():
+            pending[0].cancel()
+            pending[0] = None
+            on_double()
+        else:
+            pending[0] = threading.Timer(0.4, on_tap)
+            pending[0].start()
+
     touch.when_pressed = lambda: held.__setitem__(0, False)
     touch.when_held = lambda: (held.__setitem__(0, True), on_hold())
-    touch.when_released = lambda: None if held[0] else on_tap()   # tap = let go before 3 s
-    if ONLINE:
-        watch_game()
-    else:
-        threading.Event().wait()
+    touch.when_released = released
+    main_loop()
