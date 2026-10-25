@@ -73,6 +73,7 @@ Breaks in the pomodoro don't count.
 ## Run it yourself
 
 - **Website:** import the repo in Vercel and deploy (`vercel.json` points it at `frontend/`). Every push to `main` redeploys.
+  On your computer: `python3 serve.py`, then open http://localhost:8000 (short links like `/leaderboard` work, like on Vercel).
 - **Backend:** see [`backend/README.md`](backend/README.md): run the SQL files in order, turn on guest sign-ins.
 - **AI roasts:** Supabase → Edge Functions → deploy `roast` with **Verify JWT off**, then add the secrets
   `GEMINI_API_KEY` and `ELEVENLABS_API_KEY` (optional: `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`, `GEMINI_MODEL`).
