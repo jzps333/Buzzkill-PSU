@@ -486,9 +486,18 @@
     }, 500);
 
     const fallback = p => ROASTS[Math.floor(Math.random() * ROASTS.length)](p.profiles?.username ?? "Someone");
+    // Backup voice when ElevenLabs isn't available: the most natural-sounding voice this browser has
+    function bestVoice() {
+      const en = speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"));
+      return en.find(v => /natural|neural|premium|enhanced/i.test(v.name))
+          || en.find(v => /google us english|samantha|daniel|aria|jenny|guy/i.test(v.name))
+          || en.find(v => v.lang === "en-US") || en[0] || null;
+    }
     function speak(text) {
       speechSynthesis.cancel();
-      speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      const u = new SpeechSynthesisUtterance(text);
+      u.voice = bestVoice();
+      speechSynthesis.speak(u);
     }
 
     // ---------- Where roasts play: the Pi's Bluetooth speaker (hardware/speaker.py), this laptop, or off ----------
