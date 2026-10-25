@@ -3,7 +3,7 @@ Roasts on the speaker are speaker.py's job.
 
 Touch sensor (the speaker answers every tap):
   tap         no game -> new SOLO game (right after a game ends too: one tap = the next game)
-              waiting -> says the PIN and how many people are in (every time, until the game starts)
+              waiting -> says the PIN again (slowly, twice) and how many people are in, every tap until the game starts
               live    -> says the time left and the scoreboard (and flips the LCD page)
   double tap  no game -> new TEAMS game
               waiting -> start the game (4+ players)
@@ -122,7 +122,8 @@ def _say(text, n):
         return                          # someone tapped again meanwhile: only the newest line plays
     if voice and voice.poll() is None:
         voice.kill()                    # cut off the last announcement
-    cmd = ["mpg123", "-q", mp3] if mp3 else ["espeak-ng", "-v", "en-us", "-s", "150", "-a", "200", text]
+    speed = "120" if "PIN" in text else "150"         # the robot voice reads PINs slower too
+    cmd = ["mpg123", "-q", mp3] if mp3 else ["espeak-ng", "-v", "en-us", "-s", speed, "-g", "6", "-a", "200", text]
     voice = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -322,8 +323,13 @@ def names(ps):
     return ns[0] if len(ns) == 1 else ", ".join(ns[:-1]) + " and " + ns[-1]
 
 
+def slow(pin):
+    return " ".join(ch + "." for ch in pin)                   # "4. F. 2. A. 9. C.": a pause after every character
+
+
 def pin_line():
-    return "Your PIN is " + ", ".join(code) + "."             # "4, F, 2, A, 9, C": read one by one
+    # Slowly, and twice, so people can type it in
+    return f"Your PIN is: {slow(code)} Again: {slow(code)}"
 
 
 def lobby_line():
