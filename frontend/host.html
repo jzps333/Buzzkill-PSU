@@ -469,6 +469,26 @@
       }
     }
 
+    // Instant "BZZT" (made in the browser, no file needed) while the AI roast loads
+    const buzzed = {};
+    let audioCtx = null;
+    function buzz() {
+      try {
+        audioCtx = audioCtx || new AudioContext();
+        const t = audioCtx.currentTime, osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(140, t);
+        osc.frequency.linearRampToValueAtTime(95, t + 0.7);
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(0.35, t + 0.03);
+        gain.gain.setValueAtTime(0.35, t + 0.55);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.75);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + 0.8);
+      } catch { /* no sound support: skip it */ }
+    }
+
     function stopTalking() {
       speechSynthesis.cancel();
       voice.pause();
@@ -491,7 +511,10 @@
       if (!voice.paused || speechSynthesis.speaking) return;   // still talking
       const p = loud[Math.floor(Math.random() * loud.length)];
       const r = roasts[bustKey(p)];
-      if (r === "loading") return;                             // AI roast on its way (a second or two)
+      if (r === "loading") {                                   // AI roast on its way: buzz right away so the room knows
+        if (!buzzed[bustKey(p)]) { buzzed[bustKey(p)] = true; buzz(); }
+        return;
+      }
       playingFor = p.user_id;
       if (r?.url) {
         voice.src = r.url;

@@ -18,7 +18,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const ALLOWED_ORIGINS = ["https://www.buzzkill.study", "https://buzzkill.study", "https://buzzkill-psu.vercel.app"];
 const VOICE = Deno.env.get("ELEVENLABS_VOICE_ID") ?? "JBFqnCBsd6RMkjVDRZzb";      // "George"
 // "-latest" names always point at Google's current model, so they don't break when old ones shut down
-const MODELS = [Deno.env.get("GEMINI_MODEL"), "gemini-flash-latest", "gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-flash-lite-latest"]
+// Fastest first: Flash-Lite writes a 1-line roast in well under a second
+const MODELS = [Deno.env.get("GEMINI_MODEL"), "gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3-flash-preview"]
   .filter(Boolean) as string[];
 
 const FALLBACKS = [
@@ -72,14 +73,18 @@ ${facts}`;
   if (key) {
     for (const model of MODELS) {
       try {
-        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        // Thinking makes Gemini slow (seconds). A one-line roast doesn't need it, so ask for as little as possible.
+        const ask = (thinking: boolean) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": key },
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 1.1, maxOutputTokens: 2048 },   // newer Gemini "thinks" first and that uses up tokens too
+            generationConfig: { temperature: 1.1, maxOutputTokens: 2048,   // room in case it thinks anyway
+                                ...(thinking ? { thinkingConfig: { thinkingLevel: "minimal" } } : {}) },
           }),
         });
+        let r = await ask(true);
+        if (r.status === 400) r = await ask(false);              // this model doesn't take that setting
         if (!r.ok) {                                           // model not available -> try the next one
           const why = `Gemini ${model}: ${r.status} ${(await r.text()).slice(0, 150)}`;
           console.log(why); problems.push(why);
@@ -105,11 +110,13 @@ const plain = (text: string) => text.replace(/\[[^\]]*(\]|$)/g, "").replace(/\s+
 const onlyKnownTags = (text: string) =>
   text.replace(/\[[^\]]*$/, "").replace(/\[([^\]]*)\]/g, (m, t) => TAGS.includes(t.trim().toLowerCase()) ? `[${t.trim().toLowerCase()}]` : "").replace(/\s+/g, " ").trim();
 
-const VOICES = [
+// Default is Flash v2.5: made for speed (~0.1 s), so the roast lands right after the pickup.
+// Want the slower, more dramatic voice that acts out [laughs]/[sighs]? Set the secret ELEVENLABS_MODEL = eleven_v3.
+const FLASH = { model: "eleven_flash_v2_5", settings: { stability: 0.35, similarity_boost: 0.8, style: 0.4, use_speaker_boost: true } };
+const VOICES = (Deno.env.get("ELEVENLABS_MODEL") ?? "").includes("v3")
   // v3 stability: 0 = Creative, 0.5 = Natural, 1 = Robust. Natural acts out the tags without going off script.
-  { model: Deno.env.get("ELEVENLABS_MODEL") ?? "eleven_v3", settings: { stability: 0.5, similarity_boost: 0.8 } },
-  { model: "eleven_flash_v2_5", settings: { stability: 0.35, similarity_boost: 0.8, style: 0.4, use_speaker_boost: true } },
-];
+  ? [{ model: "eleven_v3", settings: { stability: 0.5, similarity_boost: 0.8 } }, FLASH]
+  : [FLASH];
 
 async function speak(text: string): Promise<ArrayBuffer | null> {
   const key = Deno.env.get("ELEVENLABS_API_KEY");
