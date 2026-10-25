@@ -450,6 +450,7 @@
   <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
   <script src="buzz.js"></script>
+  <script src="device.js"></script>
   <script>
     const $ = id => document.getElementById(id);
 
@@ -479,6 +480,7 @@
       const value = $("pin").value.trim().toUpperCase();
       say("");
       if (!/^[A-Z0-9]{4,12}$/.test(value)) { say("A game PIN is 4 to 12 letters and numbers.", true); wobble(); return; }
+      if (!Device.isPhone()) { say(`Join from your phone: open buzzkill.study on your phone and enter ${value}.`, true); wobble(); return; }
       $("pinBtn").disabled = true;
       try {
         const { data: game, error } = await sb.from("games").select("status").eq("code", value).maybeSingle();

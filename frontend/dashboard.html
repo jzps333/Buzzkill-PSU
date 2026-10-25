@@ -65,6 +65,7 @@
       <div id="stats" class="muted">Loading…</div>
       <div id="nemesis" class="muted" style="margin-top:12px"></div>
       <a class="btn secondary" href="/leaderboard">Leaderboard</a>
+      <a class="btn secondary" href="/friends" id="friendsBtn">Friends</a>
     </div>
 
     <p id="msg"></p>
@@ -129,6 +130,13 @@
       // 6. Nemesis: the person you lose to most
       const { data: nem } = await sb.from("rivalries").select("opponent, wins, losses")
         .eq("user_id", me).gt("losses", 0).order("losses", { ascending: false }).limit(1).maybeSingle();
+      // 7. Friend requests waiting for you
+      if (!profile?.is_guest) {
+        const { count } = await sb.from("friendships").select("id", { count: "exact", head: true })
+          .eq("addressee", me).eq("status", "pending");
+        if (count) $("friendsBtn").textContent = `Friends (${count} new request${count === 1 ? "" : "s"})`;
+      }
+
       if (nem) $("nemesis").textContent = `😈 Nemesis: ${nem.opponent} (you're ${nem.wins}–${nem.losses} against them)`;
     }
 
