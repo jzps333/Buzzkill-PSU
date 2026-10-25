@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzkill · Log in</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #111; color: #eee; max-width: 420px; margin: 40px auto; padding: 0 16px; }
+    h1 { margin-bottom: 4px; }
+    .tabs button { background: #222; color: #aaa; border: 0; padding: 10px 14px; border-radius: 8px; margin-right: 6px; }
+    .tabs button.on { background: #f5c542; color: #111; font-weight: 600; }
+    form { display: none; margin-top: 16px; }
+    form.on { display: block; }
+    input { width: 100%; box-sizing: border-box; padding: 12px; margin: 6px 0; border-radius: 8px; border: 1px solid #333; background: #1b1b1b; color: #eee; font-size: 16px; }
+    .go { width: 100%; padding: 12px; margin-top: 8px; border: 0; border-radius: 8px; background: #f5c542; color: #111; font-size: 16px; font-weight: 600; }
+    #msg { margin-top: 14px; color: #ff7a7a; }
+  </style>
+</head>
+<body>
+  <h1>Buzzkill</h1>
+  <p>Put the phone down. We're watching.</p>
+
+  <div class="tabs">
+    <button data-tab="login" class="on">Log in</button>
+    <button data-tab="signup">Sign up</button>
+    <button data-tab="guest">Guest</button>
+  </div>
+
+  <form id="login" class="on">
+    <input name="email" type="email" placeholder="Email" required>
+    <input name="password" type="password" placeholder="Password" required>
+    <button class="go">Log in</button>
+  </form>
+
+  <form id="signup">
+    <input name="username" placeholder="Username (shown on leaderboard)" required>
+    <input name="email" type="email" placeholder="Email" required>
+    <input name="password" type="password" placeholder="Password (6+ characters)" minlength="6" required>
+    <button class="go">Create account</button>
+  </form>
+
+  <form id="guest">
+    <input name="username" placeholder="Your name" required>
+    <button class="go">Play as guest</button>
+  </form>
+
+  <p id="msg"></p>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script>
+    const msg = document.getElementById("msg");
+
+    // Switch between the 3 forms
+    document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+      document.querySelectorAll(".tabs button, form").forEach(x => x.classList.remove("on"));
+      b.classList.add("on");
+      document.getElementById(b.dataset.tab).classList.add("on");
+      msg.textContent = "";
+    });
+
+    // After logging in, go back to the game link they tapped (or home)
+    function done() {
+      const next = new URLSearchParams(location.search).get("next") || "leaderboard.html";
+      location.href = next;
+    }
+
+    // LOG IN
+    document.getElementById("login").onsubmit = async e => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      const { error } = await sb.auth.signInWithPassword({
+        email: f.get("email"),
+        password: f.get("password"),
+      });
+      error ? msg.textContent = error.message : done();
+    };
+
+    // SIGN UP (username goes into the profile automatically)
+    document.getElementById("signup").onsubmit = async e => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      const { error } = await sb.auth.signUp({
+        email: f.get("email"),
+        password: f.get("password"),
+        options: { data: { username: f.get("username") } },
+      });
+      if (error) {
+        msg.textContent = error.message.includes("profiles_username_unique") || error.message.includes("Database error")
+          ? "That username is taken." : error.message;
+      } else done();
+    };
+
+    // GUEST (no email or password)
+    document.getElementById("guest").onsubmit = async e => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      const { error } = await sb.auth.signInAnonymously({
+        options: { data: { username: f.get("username") } },
+      });
+      error ? msg.textContent = error.message : done();
+    };
+  </script>
+</body>
+</html>
