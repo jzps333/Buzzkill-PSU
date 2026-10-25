@@ -205,6 +205,9 @@ Two programs run on the Pi:
 
 Games started from `/host` with the Buzzkill speaker show up on the LCD too.
 
+`i2cdetect -y 1` should show **3e** (text) and **62** (backlight). Only 3e = the text works but the colors don't:
+the v4.0 backlight chip usually needs **5V**, and the Grove hat's I2C ports give 3.3V. It still works fine as a text screen.
+
 **NFC stickers / QR code:** write `https://buzzkill-psu.vercel.app/brick` on them (NFC Tools app → Write → URL).
 That page always forwards to the game the brick is running, so one sticker works for every game.
 
