@@ -102,6 +102,14 @@
     /* ---------- Lobby: who's here, and how you stack up ---------- */
     .lobby { margin-top: 14px; text-align: left; }
     .lobby > p { margin: 0 0 8px; font-size: 14px; font-weight: 800; }
+    /* Swipe sideways through the players */
+    .slider { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin: 0 -4px; padding: 2px 4px 4px; -webkit-overflow-scrolling: touch; }
+    .slider::-webkit-scrollbar { display: none; }
+    .slider .pcard { flex: 0 0 88%; scroll-snap-align: center; margin-bottom: 0; }
+    .slider .pcard:only-child { flex-basis: 100%; }
+    .dots { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+    .dots span { width: 7px; height: 7px; border-radius: 50%; background: rgba(31,27,22,.25); transition: width .2s, background .2s; }
+    .dots span.on { width: 18px; border-radius: 4px; background: var(--ink); }
     .pcard { margin-bottom: 10px; padding: 12px 14px; border-radius: 16px; background: rgba(255,255,255,.7); }
     .pcard-top { display: flex; align-items: center; gap: 10px; }
     .pcard-top .av { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: #fff; font-weight: 800; flex: none; }
@@ -135,6 +143,11 @@
       <div class="bee" id="bee"></div>
       <h1 id="status">Joining…</h1>
       <p id="hint"></p>
+      <div class="lobby" id="lobby" hidden>
+        <p id="lobbyTitle">👥 In the lobby</p>
+        <div class="slider" id="lobbyList"></div>
+        <div class="dots" id="lobbyDots" aria-hidden="true"></div>
+      </div>
       <button class="main" id="start" hidden>I'm ready</button>
       <div class="phase" id="phase" hidden></div>
       <div class="race" id="race" hidden aria-live="polite">
@@ -152,10 +165,6 @@
           <button data-choice="none"><b>No breaks</b>until it ends</button>
         </div>
         <p class="vote-tally" id="tally"></p>
-      </div>
-      <div class="lobby" id="lobby" hidden>
-        <p id="lobbyTitle">👥 In the lobby</p>
-        <div id="lobbyList"></div>
       </div>
     </div>
     <div id="debug"></div>
@@ -306,8 +315,21 @@
         lobbyKey = key;
         $("lobbyTitle").textContent = data.length ? `👥 In the lobby with you (${data.length})` : "👥 Nobody else here yet. Share the PIN!";
         $("lobbyList").replaceChildren(...data.map(card));
+        $("lobbyDots").replaceChildren(...(data.length > 1 ? data.map(() => document.createElement("span")) : []));
+        $("lobbyList").scrollLeft = 0;
+        markDot();
       } finally { lobbyBusy = false; }
     }
+
+    // Dots under the slider: which player you're looking at
+    function markDot() {
+      const list = $("lobbyList"), dots = [...$("lobbyDots").children];
+      if (!dots.length) return;
+      const w = list.firstElementChild?.offsetWidth + 10 || 1;
+      const i = Math.min(dots.length - 1, Math.round(list.scrollLeft / w));
+      dots.forEach((d, k) => d.classList.toggle("on", k === i));
+    }
+    $("lobbyList").addEventListener("scroll", markDot, { passive: true });
 
     function card(p) {
       const c = el("div", "pcard");
