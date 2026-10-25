@@ -48,6 +48,7 @@ auto_for = None      # the game a start countdown is running for
 auto_tried = 0       # when the last auto-start was tried (a failed one retries, but not every second)
 last_count = None    # (game, players) last written to the log
 lock = threading.Lock()
+GAME_FILE = HERE / ".game"     # the game this brick is running, for speaker.py (works even without games.speaker)
 
 
 def log(*a):
@@ -347,9 +348,20 @@ def winner_line(final):
     return f"{names(best)} tie for the win with {n} {picks}."
 
 
+def share_game(shared=[None]):
+    # Tell speaker.py which game to roast for
+    if code != shared[0]:
+        try:
+            GAME_FILE.write_text(code or "")
+            shared[0] = code
+        except OSError as e:
+            log("couldn't write", GAME_FILE, e)
+
+
 def main_loop():
     last_fetch = last_prune = last_error = 0
     while True:
+        share_game()
         now = time.time()
         if ONLINE and now - last_fetch > 1:
             last_fetch = now
