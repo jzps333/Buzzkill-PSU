@@ -69,6 +69,8 @@
     td:last-child { border-radius: 0 12px 12px 0; }
     td.player { font-weight: 800; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
     tr.me td { background: #F8E7A6; }
+    .sample { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #E9E3D3; color: #6B6250; font-size: 11px; font-weight: 800; vertical-align: 1px; }
+    .sample-toggle { margin-left: 6px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
     .you { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--ink); color: var(--white); font-size: 11px; font-weight: 800; vertical-align: 1px; }
     .up { color: var(--green); } .down { color: var(--red); }
     .empty { padding: 26px 8px; text-align: center; color: var(--ink-2); }
@@ -144,6 +146,7 @@
           <tbody id="rows"><tr><td colspan="6" class="empty">Loading the leaderboard…</td></tr></tbody>
         </table>
       </div>
+      <p class="note" id="sampleNote"></p>
       <p class="note">Guests aren't ranked. <a href="/login?tab=signup">Make an account</a> to get on the board.</p>
     </section>
   </main>
@@ -179,7 +182,7 @@
         const spot = el("div", `spot p${place}` + (p.id === me ? " me" : ""));
         spot.append(
           el("span", "place", place),
-          el("p", "name", p.username),
+          el("p", "name", p.username + (p.sample ? " (sample)" : "")),
           el("p", "big", fmt(p.pickups_per_hour)),
           el("p", "unit", "pickups / hr"),
           el("p", "meta", `${fmt(p.clean_pct)}% clean, ${p.games} game${p.games === 1 ? "" : "s"}`),
@@ -195,6 +198,7 @@
         const tr = el("tr", p.id === me ? "me" : "");
         const name = el("td", "player", p.username);
         if (p.id === me) name.append(el("span", "you", "You"));
+        if (p.sample) name.append(el("span", "sample", "Sample"));
         tr.append(
           el("td", "", i + 1),
           name,
@@ -216,11 +220,28 @@
       $("rows").replaceChildren(tr);
     }
 
+    // Sample players for the demo, clearly marked "Sample". Real players are ranked alongside them.
+    const SAMPLE = [
+      ["maya.studies", 0.4, 86, 14, 612], ["jordan_k", 0.7, 78, 11, 498], ["priya", 0.9, 71, 17, 735],
+      ["focusfox", 1.2, 64, 9, 380], ["alexr", 1.6, 55, 12, 520], ["sam.codes", 2.1, 47, 8, 342],
+      ["noah", 2.8, 38, 10, 415], ["lena_m", 3.4, 29, 6, 251], ["chris", 4.5, 20, 7, 290], ["doomscroll_dan", 6.9, 9, 5, 204],
+    ].map(([username, pickups_per_hour, clean_pct, games, minutes_played], i) =>
+      ({ id: "sample-" + i, username, pickups_per_hour, clean_pct, games, minutes_played, sample: true }));
+    let showSamples = true;
+
     let lastJson = "";
-    async function load() {
-      const { data, error } = await sb.from("leaderboard").select("*");
+    async function load(force) {
+      let { data, error } = await sb.from("leaderboard").select("*");
       if (error) { message("Couldn't load the leaderboard. Refresh to try again."); return; }
-      const json = JSON.stringify(data) + me;
+      if (showSamples) {
+        data = data.concat(SAMPLE).sort((a, b) =>
+          Number(a.pickups_per_hour) - Number(b.pickups_per_hour) || Number(b.clean_pct) - Number(a.clean_pct));
+      }
+      $("sampleNote").replaceChildren(showSamples ? "Includes sample players for the demo." : "Sample players hidden.");
+      const t = el("button", "sample-toggle", showSamples ? "Hide them" : "Show them");
+      t.onclick = () => { showSamples = !showSamples; load(true); };
+      $("sampleNote").append(t);
+      const json = JSON.stringify(data) + me + showSamples;
       if (json === lastJson) return;              // nothing changed: don't redraw
       lastJson = json;
       if (!data.length) { renderPodium([]); message("No finished games yet.", { text: "Start one", href: "/" }); return; }
