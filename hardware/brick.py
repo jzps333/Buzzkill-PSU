@@ -17,6 +17,7 @@ The NFC sticker / QR code on the brick points at /brick, which always forwards t
 """
 import os
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -45,7 +46,8 @@ ONLINE = SB_KEY.startswith("sb_secret")
 HEADERS = {"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}"}
 
 code = None          # current room code
-auto_for = None      # the game a countdown was started for, so it only happens once
+auto_for = None      # the game a countdown is running for
+auto_tried = 0       # when the last auto-start was tried (so a failed one retries, but not every second)
 last_count = None    # (game, players) last printed to the log
 game = {}            # its games row
 players = []         # its results rows
@@ -190,14 +192,20 @@ def start():
         with lock:
             try:
                 rpc("start_game", {"p_code": code})
+                game["status"] = "live"
+                print("game", code, "started", flush=True)
                 say("Game on. Phones down. Good luck.")
             except Exception as e:
-                print("start failed:", e)
+                print("start failed:", e, flush=True)
                 if "4 players" in str(e):
                     note("Need 4 players", f"Have {len(players)}", lcd.RED)
-                    say("Need at least 4 players.")
+                    say("Couldn't start yet. Need at least 4 players, and everyone has to keep the page open.")
+                elif "even" in str(e).lower():
+                    note("Teams need", "an even number", lcd.RED)
+                    say("Teams need an even number of players.")
                 else:
                     note("Can't start", str(e)[:16], lcd.RED)
+                    say("Couldn't start the game. Check the brick's log.")
 
 
 def on_double():
@@ -270,25 +278,30 @@ def refresh():
             reset()
         return
     game = rows[0]
-    players = get("results", game=f"eq.{code}", select="user_id,pickups,alarm_on,sol_in,profiles(username)")
+    players = get("results", game=f"eq.{code}", select="user_id,pickups,alarm_on,profiles(username)")
     auto_start()
 
 
 def auto_start():
     """Enough players joined: count down 5 seconds, then start (same as a double tap)."""
-    global auto_for, last_count
+    global auto_for, auto_tried, last_count
     if game.get("status") == "waiting" and (code, len(players)) != last_count:
         last_count = (code, len(players))
         print(f"lobby {code}: {len(players)} player(s) in (auto-start at {AUTO_START or 'off'})", flush=True)
-    if not AUTO_START or game.get("status") != "waiting" or len(players) < AUTO_START or auto_for == code:
+    if not AUTO_START or game.get("status") != "waiting" or len(players) < AUTO_START:
         return
-    auto_for = code
+    if auto_for == code or time.time() - auto_tried < 12:      # countdown running, or just tried
+        return
+    auto_for, auto_tried = code, time.time()
+    print(f"auto-start: {len(players)} players in {code}, starting in 5 s", flush=True)
     note(f"{len(players)} players in!", "Starting in 5s", lcd.GREEN, 5)
     say(f"{len(players)} players in. Starting in 5 seconds. Phones face down.")
 
     def go(c=code):
+        global auto_for
         if code == c and game.get("status") == "waiting":
             start()
+        auto_for = None              # if it didn't start (someone left), try again once 4+ are in
     threading.Timer(5, go).start()
 
 
@@ -357,8 +370,7 @@ def score_line():
     worst = max(players, key=lambda p: p["pickups"])
     n = worst["pickups"]
     line = f"{name(worst)} is losing, with {n} pickup{'s' if n != 1 else ''}"
-    lost = min(n * 0.02, float(worst.get("sol_in") or 0))          # same 0.02 SOL per pickup as finish_game
-    line += f", down {lost:.2f} SOL." if lost else "."
+    line += "."
     clean = [p for p in players if p["pickups"] == 0]
     if clean:
         line += f" {names(clean)} {'is' if len(clean) == 1 else 'are'} still clean."
@@ -414,7 +426,7 @@ def main_loop():
                     last_prune = now
                     rpc("prune_lobby", {"p_code": code})     # drop players who closed their browser
             except Exception as e:
-                print("refresh failed:", e)
+                print("refresh failed:", e, flush=True)
         try:
             render()
         except Exception as e:
@@ -422,7 +434,27 @@ def main_loop():
         time.sleep(0.3)
 
 
+def status():
+    """python3 brick.py --status : what the brick sees right now (run it while people are joining)."""
+    print("secret key:", "OK" if ONLINE else "MISSING (fill in SUPABASE_SERVICE_KEY in .env)")
+    print("auto-start at:", AUTO_START or "off", "| speaker id:", SPEAKER_ID)
+    if not ONLINE:
+        return
+    open_games = get("games", select="code,status,speaker,mode", status="in.(waiting,live)")
+    mine = [g for g in open_games if g["speaker"] == SPEAKER_ID]
+    print("open games:", len(open_games), "| following this brick:", [g["code"] for g in mine] or "none")
+    for g in open_games:
+        if g["speaker"] != SPEAKER_ID:
+            print(f"  {g['code']} ({g['status']}) is NOT on this brick (speaker = {g['speaker']}). Start games by tapping the brick.")
+    for g in mine:
+        rows = get("results", game=f"eq.{g['code']}", select="user_id,profiles(username)")
+        print(f"  {g['code']} ({g['status']}, {g['mode']}): {len(rows)} player(s):", ", ".join(name(r) for r in rows) or "-")
+
+
 # ---------- start ----------
+if __name__ == "__main__" and "--status" in sys.argv:
+    status()
+    sys.exit()
 if __name__ == "__main__":
     tag(SITE + "/brick")
     print("online mode:", ONLINE, "| touch pin:", TOUCH_PIN)
