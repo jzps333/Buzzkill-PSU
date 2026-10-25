@@ -14,6 +14,7 @@ The NFC sticker / QR code on the brick points at /brick, which always forwards t
 """
 import os
 import subprocess
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -66,15 +67,57 @@ def note(top, bottom, color, secs=3):
 
 
 voice = None
+said = 0                 # counts announcements, so a newer tap wins over an older one still loading
+AI_VOICE = os.environ.get("AI_ROASTS", "1") != "0"
+VOICE_DIR = Path(tempfile.mkdtemp(prefix="buzzkill-brick-"))
+voiced = {}              # text -> mp3 path, so repeated lines ("Game on") don't cost credits again
+
+
+def short(text, limit=200):
+    # The voice function reads at most 200 characters: cut at the last full sentence that fits
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    return cut[:cut.rfind(". ") + 1] or cut
+
+
+def eleven(text):
+    """The line in the ElevenLabs roast voice (the same "roast" Supabase function speaker.py uses). mp3 path or None."""
+    if not (ONLINE and AI_VOICE):
+        return None
+    if text not in voiced:
+        try:
+            r = requests.post(f"{SB_URL}/functions/v1/roast", json={"say": text}, timeout=15,
+                              headers={**HEADERS, "Content-Type": "application/json"})
+            if not (r.ok and r.headers.get("content-type", "").startswith("audio")):
+                print("ElevenLabs voice not available, using espeak:", r.status_code, r.text[:120])
+                return None
+            path = VOICE_DIR / f"line-{len(voiced)}.mp3"
+            path.write_bytes(r.content)
+            voiced[text] = str(path)
+        except requests.RequestException as e:
+            print("ElevenLabs voice failed, using espeak:", e)
+            return None
+    return voiced[text]
 
 
 def say(text):
-    # The brick's own announcements. Roasts are speaker.py's job.
-    global voice
-    if voice and voice.poll() is None:
-        voice.kill()                 # a new tap cuts off the last announcement
+    # The brick's own announcements (PIN, scoreboard, time). Roasts are speaker.py's job.
+    global said
+    said += 1
     print("say:", text)
-    voice = subprocess.Popen(["espeak-ng", "-v", "en-us", "-s", "150", "-a", "200", text])
+    threading.Thread(target=_say, args=(short(text), said), daemon=True).start()
+
+
+def _say(text, n):
+    global voice
+    mp3 = eleven(text)                  # takes a second or two
+    if n != said:
+        return                          # someone tapped again meanwhile: only the newest line plays
+    if voice and voice.poll() is None:
+        voice.kill()                    # cut off the last announcement
+    cmd = ["mpg123", "-q", mp3] if mp3 else ["espeak-ng", "-v", "en-us", "-s", "150", "-a", "200", text]
+    voice = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def tag(url):

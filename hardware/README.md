@@ -2,6 +2,63 @@
 
 Raspberry Pi 4B code for the brick: NFC tag (ST25DV64K), touch sensor, speaker.
 
+
+## Quick start: run the brick (speaker + touch)
+
+Everything below is on the Pi, over SSH. First time only: `cd ~/Buzzkill-PSU/hardware && bash setup.sh`.
+
+**1. Get the latest code**
+```bash
+cd ~/Buzzkill-PSU && git pull && cd hardware
+```
+
+**2. Connect the JBL Go 3** (turn it on; it's already paired)
+```bash
+bluetoothctl connect 18:90:67:DE:D2:E1      # wait for "Connection successful"
+espeak-ng "Put your phone down"             # should come out of the JBL
+```
+No sound: `wpctl status`, find the JBL under Sinks, `wpctl set-default <number>`. Never paired? See "3. JBL Go 3" below.
+
+**3. Settings** (once)
+```bash
+cp -n .env.example .env     # the JBL address is already filled in
+nano .env                   # paste the sb_secret key into SUPABASE_SERVICE_KEY, Ctrl+O Enter, Ctrl+X
+```
+The key is in Supabase → Project Settings → API Keys → Secret keys. Never commit it.
+Without it, tapping still works and the brick says "not connected to the game yet" (good for testing touch + speaker).
+
+**4. Start it** (also starts on every boot)
+```bash
+systemctl --user enable --now buzzkill-speaker buzzkill
+systemctl --user restart buzzkill-speaker buzzkill     # after every git pull
+bash check.sh                                           # ✅ / ❌ for every part
+journalctl --user -u buzzkill-speaker -u buzzkill -f    # live logs
+```
+
+**5. Play**
+
+| You | The brick says (ElevenLabs voice) |
+|---|---|
+| **Tap** | "New game. Your PIN is 4, F, 2, A, 9, C." (double tap = teams game) |
+| Players type the PIN at buzzkill.study (or tap the NFC sticker → `/brick`) | |
+| **Tap** (under 4 players) | the PIN again + who's in, "Need 2 more to start." |
+| **Tap** (4+ players) | "Game on. Phones down. Good luck." |
+| Someone picks up | an AI roast on loop until they shake their phone |
+| **Tap** during the game | time left + scoreboard: "Alex is losing, with 3 pickups. Sam is still clean." |
+| **Hold 3 s** | "Game over. Check your phones for results." |
+
+**Voices:** roasts and the brick's announcements use the ElevenLabs voice from the `roast` Supabase function
+(needs its `GEMINI_API_KEY` and `ELEVENLABS_API_KEY` secrets, see the main README). If it's down or out of credits,
+the brick falls back to the espeak robot voice. `AI_ROASTS=0` in `.env` = always espeak (saves credits).
+
+| Problem | Fix |
+|---|---|
+| No sound | `bluetoothctl connect 18:90:67:DE:D2:E1`, then `wpctl status` |
+| Robot voice instead of ElevenLabs | `journalctl --user -u buzzkill -n 30` shows why (key, credits, function not deployed) |
+| Tap does nothing | `journalctl --user -u buzzkill -n 30` |
+| Logs say 401 / Invalid API key | the key in `.env` is wrong or still the placeholder |
+| Logs mention the `speakers` table | run `backend/speaker.sql` in the Supabase SQL Editor |
+
 ## What the Pi does (the database does the rest)
 
 Supabase is the referee: it counts pickups, runs the shake penalty, and pays out.
