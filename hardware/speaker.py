@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Buzzkill speaker: reads the roasts out loud on the Pi's Bluetooth speaker.
+Buzzkill speaker: plays the roasts out loud on the Pi's Bluetooth speaker.
 
   python3 speaker.py           run it (Ctrl+C to stop)
   python3 speaker.py --test    say one roast and quit (checks the speaker works)
@@ -9,18 +9,22 @@ What it does, about twice a second:
   1. Finds the open game whose host picked this speaker (games.speaker = SPEAKER_ID).
   2. Reads that game's players from `results`.
   3. Plays a roast on loop while anyone has alarm_on and is NOT shaking. Otherwise silent.
+     Each new pickup gets one AI roast (the "roast" Supabase function: Gemini writes it, ElevenLabs says it).
+     No AI roast? It reads the text with espeak-ng, or one of the built-in roasts.
 Every 5 seconds it checks in (speakers.last_seen) so the host page shows "Speaker online".
 
-Settings come from hardware/.env (see .env.example). Only needs `requests` and `espeak-ng`.
+Settings come from hardware/.env (see .env.example). Needs `requests`, `espeak-ng` and `mpg123`.
 """
 import os
 import random
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import unquote
 
 import requests
 
@@ -47,15 +51,20 @@ def load_env():
                 os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 load_env()
-URL = os.environ["SUPABASE_URL"].rstrip("/") + "/rest/v1"
+BASE = os.environ["SUPABASE_URL"].rstrip("/")
+URL = BASE + "/rest/v1"
 KEY = os.environ["SUPABASE_SERVICE_KEY"]
 SPEAKER_ID = os.environ.get("SPEAKER_ID", "brick")
 SPEAKER_NAME = os.environ.get("SPEAKER_NAME", "Buzzkill speaker")
 BT_MAC = os.environ.get("BT_SPEAKER_MAC", "").strip()
 TTS_CMD = os.environ.get("TTS_CMD", "espeak-ng -v en-us -s 160 -a 200").split()
+PLAY_CMD = os.environ.get("PLAY_CMD", "mpg123 -q").split()
+AI_ROASTS = os.environ.get("AI_ROASTS", "1") != "0"
 
+HEADERS = {"apikey": KEY, "Content-Type": "application/json"}
 http = requests.Session()
-http.headers.update({"apikey": KEY, "Content-Type": "application/json"})
+http.headers.update(HEADERS)
+ROAST_DIR = Path(tempfile.mkdtemp(prefix="buzzkill-roasts-"))
 
 
 def log(*a):
@@ -86,6 +95,48 @@ def current_game():
     return games[0] if games else None
 
 
+# ---------- AI roasts: one per pickup ----------
+# In teams, a pickup busts the whole team, and they all share the roast of whoever slipped (alarm_cause).
+roasts = {}      # bust key -> "loading" | {"mp3": path, "text": ...} | {"text": ...} | {} (failed: built-in roast)
+
+
+def culprit(p):
+    return p.get("alarm_cause") or p["user_id"]
+
+
+def bust_key(p, players):
+    who = next((x for x in players if x["user_id"] == culprit(p)), p)
+    return f"{culprit(p)}:{who['pickups']}"
+
+
+def fetch_roast(key, code, user_id):
+    try:
+        r = requests.post(f"{BASE}/functions/v1/roast", headers=HEADERS,
+                          json={"game": code, "user_id": user_id}, timeout=15)
+        r.raise_for_status()
+        text = unquote(r.headers.get("X-Roast-Text", ""))
+        if r.headers.get("content-type", "").startswith("audio"):
+            path = ROAST_DIR / (key.replace(":", "-") + ".mp3")
+            path.write_bytes(r.content)
+            roasts[key] = {"mp3": str(path), "text": text}
+        else:
+            roasts[key] = {"text": r.json().get("text")}      # no voice credits left: espeak reads it
+        log("AI roast:", roasts[key].get("text"))
+    except Exception as e:
+        log("AI roast failed, using a built-in one:", e)
+        roasts[key] = {}
+
+
+def ask_for_roast(key, code, user_id):
+    if key in roasts:
+        return
+    if not AI_ROASTS:
+        roasts[key] = {}
+        return
+    roasts[key] = "loading"
+    threading.Thread(target=fetch_roast, args=(key, code, user_id), daemon=True).start()
+
+
 # ---------- Bluetooth: keep the speaker connected ----------
 def bluetooth_loop():
     while True:
@@ -110,11 +161,21 @@ class Voice:
     def busy(self):
         return self.proc is not None and self.proc.poll() is None
 
-    def say(self, text, who=None):
+    def _run(self, cmd, who):
         self.stop()
-        log("Saying:", text)
-        self.proc = subprocess.Popen(TTS_CMD + [text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.who = who
+
+    def say(self, text, who=None):
+        log("Saying:", text)
+        self._run(TTS_CMD + [text], who)
+
+    def play(self, mp3, text, who=None):
+        try:
+            self._run(PLAY_CMD + [mp3], who)
+        except FileNotFoundError:
+            log(f"'{PLAY_CMD[0]}' isn't installed (sudo apt install mpg123), reading the text instead")
+            self.say(text, who)
 
     def stop(self):
         if self.busy():
@@ -160,10 +221,11 @@ def main():
                 continue
             if game["code"] != code:
                 code = game["code"]
+                roasts.clear()
                 log("Game", code, "is live")
 
             players = get("results", game=f"eq.{code}",
-                          select="user_id,alarm_on,is_shaking,last_shake_at,profiles(username)")
+                          select="user_id,pickups,alarm_on,alarm_cause,is_shaking,last_shake_at,profiles(username)")
 
             # Sound plays when your alarm is on and you're NOT shaking.
             # Still "shaking" but no new shake for 2s (phone died, lost signal) = stopped.
@@ -181,10 +243,19 @@ def main():
                 voice.stop()             # they started shaking: cut the roast off right away
             if not loud:
                 voice.stop()
-            elif not voice.busy():
-                p = random.choice(loud)
-                name = (p.get("profiles") or {}).get("username") or "Someone"
-                voice.say(random.choice(ROASTS).format(n=name), p["user_id"])
+            else:
+                for p in loud:           # one AI roast per new pickup, fetched in the background
+                    ask_for_roast(bust_key(p, players), code, culprit(p))
+                if not voice.busy():
+                    p = random.choice(loud)
+                    r = roasts.get(bust_key(p, players))
+                    if r != "loading":   # AI roast on its way (a second or two)
+                        name = (p.get("profiles") or {}).get("username") or "Someone"
+                        text = (r or {}).get("text") or random.choice(ROASTS).format(n=name)
+                        if r and r.get("mp3"):
+                            voice.play(r["mp3"], text, p["user_id"])
+                        else:
+                            voice.say(text, p["user_id"])
 
         except requests.RequestException as e:
             log("Network problem:", e)

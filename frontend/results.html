@@ -78,6 +78,9 @@
       .badges { margin-left: 0; }
       .actions { grid-template-columns: 1fr; }
     }
+    .team-win { margin-top: 14px; padding: 18px 22px; border-radius: 22px; background: var(--ink); color: #fff; text-align: center; }
+    .team-win b { display: block; font-size: 24px; font-weight: 800; }
+    .team-win span { font-size: 14px; color: #D8D0BE; }
   </style>
 </head>
 <body>
@@ -104,6 +107,7 @@
       <p id="sub">Loading the results…</p>
     </section>
 
+    <div class="team-win" id="teamWin" hidden></div>
     <div class="list" id="list"></div>
 
     <div class="legend" id="legend" hidden>
@@ -139,8 +143,22 @@
       if (error || !data?.length) { $("sub").textContent = `Game ${room}`; empty("No results for this game yet."); return; }
 
       const winner = data[0];
+      const { data: g } = await sb.from("games").select("mode, pomo_choice").eq("code", room).maybeSingle();
+      const POMO = { sprint: "Sprint pomodoro", classic: "Classic pomodoro", deep: "Deep pomodoro", none: "no breaks" };
       $("title").textContent = winner.pickups === 0 ? `${winner.username} stayed focused` : "Game over";
-      $("sub").textContent = `Game ${room}, ${data.length} player${data.length === 1 ? "" : "s"}. Fewest pickups wins.`;
+      $("sub").textContent = `Game ${room}, ${data.length} player${data.length === 1 ? "" : "s"}` +
+        (g?.pomo_choice ? `, ${POMO[g.pomo_choice] ?? g.pomo_choice}` : "") + ". Fewest pickups wins.";
+
+      // Teams: fewest total pickups wins
+      if (g?.mode === "teams") {
+        const tot = { 1: 0, 2: 0 };
+        data.forEach(p => { if (p.team) tot[p.team] += p.pickups; });
+        const name = { 1: "🍯 Team Honey", 2: "🐝 Team Stingers" };
+        const head = tot[1] === tot[2] ? "🤝 It's a tie!" : `${name[tot[1] < tot[2] ? 1 : 2]} wins!`;
+        $("teamWin").replaceChildren(el("b", "", head), el("span", "", `Honey ${tot[1]} pickups · Stingers ${tot[2]} pickups`));
+        $("teamWin").hidden = false;
+        $("title").textContent = head;
+      }
 
       let anyBadge = false;
       $("list").replaceChildren(...data.map((p, i) => {
@@ -148,7 +166,8 @@
         const row = el("div", "row");
         const pick = el("div", "pickups");
         pick.append(el("b", "", p.pickups), el("span", "meta", `pickup${p.pickups === 1 ? "" : "s"}`));
-        row.append(el("span", "rank", i + 1), el("p", "name", p.username), pick);
+        const team = g?.mode === "teams" && p.team ? (p.team === 1 ? "🍯 " : "🐝 ") : "";
+        row.append(el("span", "rank", i + 1), el("p", "name", team + p.username), pick);
         card.append(row);
 
         const badges = [];

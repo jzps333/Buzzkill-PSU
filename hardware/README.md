@@ -11,7 +11,7 @@ The Pi only needs to do 3 things, using the secret key in `.env`:
 
 | Touch | Call | What happens |
 |---|---|---|
-| Tap (no game) | `create_game()` → returns a code like `4F2A9C` | Write `https://www.buzzkill.study/join?room=CODE` to the NFC tag |
+| Tap (no game) | `create_game()` (solo) or `create_game({"p_mode": "teams"})` → returns a code like `4F2A9C` | Write `https://www.buzzkill.study/join?room=CODE` to the NFC tag |
 | Tap (waiting) | `start_game(p_code)` | Game goes live. Fails with an error if fewer than 4 players joined, so play a "need more players" sound |
 | Hold 3 s | `finish_game(p_code)` | Game ends, SOL payouts are calculated |
 | (optional) | `cancel_game(p_code)` | Close a game that hasn't started yet |
@@ -35,6 +35,27 @@ sb.rpc("finish_game", {"p_code": code}).execute()
 Safety rule: while someone is shaking, their row updates about twice a second. If you get no update
 for 2 seconds while `is_shaking` is still true (their phone died or lost signal), treat it as stopped and play the sound.
 
+In **teams** mode, one pickup turns `alarm_on` on for every player on that team, so several rows can be busted at once.
+Play the sound while ANY player is busted and not shaking. `alarm_cause` says whose pickup it was (good for the roast: "Alex slipped!").
+
+**AI roasts (Gemini writes it, ElevenLabs says it).** Done in `speaker.py`. When a new pickup happens, ask for a roast once,
+then loop that mp3 with the same rules as above. Teams: ask once, for the `alarm_cause` player.
+
+```python
+import requests, os
+r = requests.post(f"{os.environ['SUPABASE_URL']}/functions/v1/roast",
+                  headers={"apikey": os.environ["SUPABASE_SERVICE_KEY"], "Content-Type": "application/json"},
+                  json={"game": code, "user_id": busted_user_id}, timeout=12)
+if r.headers.get("content-type", "").startswith("audio"):
+    open("/tmp/roast.mp3", "wb").write(r.content)      # play on loop, e.g. mpg123 --loop -1 /tmp/roast.mp3
+else:
+    text = r.json().get("text")                          # no voice available: use espeak, or a built-in sound
+```
+It takes 1-3 seconds, so play a buzzer sound while waiting. If it fails, play your built-in roasts.
+
+**Optional, nice for the demo:** announce breaks. The game row has `start_time`, `pomo_work` and `pomo_break` (minutes);
+call `on_break(p_code)` to check, and say "Break time!" / "Break's over, phones down!" when it changes.
+
 **3. Players joining:** phones handle it, and new rows show up in `results`. While the game is waiting,
 call `prune_lobby(p_code)` every ~8 seconds so players who closed their browser get removed
 (rows are deleted, so listen for Realtime `DELETE`s too if you show a player count).
@@ -55,7 +76,7 @@ How it fits together:
 1. Run `backend/speaker.sql` in the Supabase SQL Editor (once for the project).
 2. Install the voice and get the code:
    ```bash
-   sudo apt install -y espeak-ng python3-requests
+   sudo apt install -y espeak-ng mpg123 python3-requests
    git clone https://github.com/jzps333/Buzzkill-PSU ~/Buzzkill-PSU
    cd ~/Buzzkill-PSU/hardware && cp .env.example .env   # then paste the secret key into .env
    ```
@@ -81,8 +102,9 @@ How it fits together:
    journalctl --user -u buzzkill-speaker -f   # watch the logs
    ```
 
-Want a nicer voice? Set `TTS_CMD` in `.env` to any command that takes the text as its last argument
-(for example a small script that runs Piper and plays the result with `aplay`).
+It plays the same AI roasts as the host page (one per pickup; in teams, one per slip for the whole team).
+If the roast function is down or out of credits, it reads the text with espeak-ng, or uses a built-in roast.
+Set `AI_ROASTS=0` in `.env` to skip the AI and save credits.
 
 ## Backup
 

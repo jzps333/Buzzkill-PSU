@@ -83,6 +83,18 @@
     li .av { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--honey); font-size: 13px; font-weight: 800; }
     li .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .chip { flex: none; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; background: var(--sand); color: var(--ink-2); white-space: nowrap; }
+    .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+    .mode { padding: 16px; border: 2px solid var(--line); border-radius: 16px; background: var(--white); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+    .mode b { display: block; font-size: 17px; font-weight: 800; }
+    .mode span { font-size: 13px; color: var(--ink-2); }
+    .mode.on { border-color: var(--ink); background: #FFF3C4; }
+    .info { margin: 10px 0 0; padding: 12px 14px; border-radius: 14px; background: var(--sand); font-size: 14px; font-weight: 700; }
+    .info.break { background: #E3F2E8; }
+    .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    .teams div { padding: 14px; border-radius: 16px; background: var(--sand); text-align: center; font-weight: 800; }
+    .teams b { display: block; font-size: 30px; line-height: 1.1; }
+    .teams small { font-size: 12px; color: var(--ink-2); }
+    .teams .lead { background: var(--honey); }
     .chip.clean { background: #E3F2E8; color: var(--green); }
     .chip.busted { background: #FBE0E1; color: var(--red); }
     .chip.shaking { background: #FCEFD2; color: var(--amber); }
@@ -142,6 +154,10 @@
     <section class="card" id="setup">
       <h2>Start a new game</h2>
       <p class="sub">You'll get a game PIN. Friends type it on their phones at buzzkill.study. You need 4 or more players to start.</p>
+      <div class="modes">
+        <button class="mode on" data-mode="solo"><b>🙋 Solo</b><span>Everyone for themselves</span></button>
+        <button class="mode" data-mode="teams"><b>👥 Teams</b><span>Honey vs Stingers. One pickup busts the whole team.</span></button>
+      </div>
       <button class="btn" id="newGame">New game</button>
     </section>
 
@@ -164,6 +180,12 @@
         <h2>Players</h2>
         <div class="count-row"><span id="countText">0 / 4 players</span><span id="countHint">4 needed to start</span></div>
         <div class="bar" id="bar"><span id="barFill"></span></div>
+        <p class="info" id="modeBox"></p>
+        <p class="info" id="phaseBox" hidden></p>
+        <div class="teams" id="teamsBox" hidden>
+          <div id="team1">🍯 Honey<b>0</b><small>pickups</small></div>
+          <div id="team2">🐝 Stingers<b>0</b><small>pickups</small></div>
+        </div>
         <ul id="players"></ul>
 
         <button class="btn" id="startBtn">Start game</button>
@@ -174,7 +196,7 @@
 
       <section class="card">
         <h2>Where roasts play</h2>
-        <p class="sub" id="speakerNote">Read out loud whenever someone gets busted.</p>
+        <p class="sub" id="speakerNote">AI roasts read out loud whenever someone gets busted.</p>
         <div class="seg" role="radiogroup" aria-label="Where roasts play">
           <label><input type="radio" name="out" value="speaker" id="outSpeaker"><span><i class="dot" id="speakerDot"></i><span id="speakerName">Buzzkill speaker</span></span></label>
           <label><input type="radio" name="out" value="laptop"><span>This laptop</span></label>
@@ -201,7 +223,8 @@
       n => `Wow ${n}. That notification was not important.`,
     ];
 
-    let code = null, status = null, players = [];
+    let code = null, status = null, players = [], game = {}, mode = "solo";
+    const POMO = { sprint: "Sprint (15 min focus / 3 break)", classic: "Classic (25 / 5)", deep: "Deep (50 / 10)", none: "No breaks" };
     const lastShakeSeen = {};         // user_id -> when we last heard they were shaking (this laptop's clock)
 
     // ---------- 1. Must be logged in, not as a guest ----------
@@ -219,16 +242,33 @@
     }
 
     // ---------- 2. New game ----------
+    document.querySelectorAll(".mode").forEach(b => b.onclick = () => {
+      mode = b.dataset.mode;
+      document.querySelectorAll(".mode").forEach(x => x.classList.toggle("on", x === b));
+    });
     $("newGame").onclick = async () => {
       $("newGame").disabled = true;
-      const { data, error } = await sb.rpc("create_game");
+      const { data, error } = await sb.rpc("create_game", { p_mode: mode });
       $("newGame").disabled = false;
       if (error) { $("msg").textContent = error.message; return; }
       openGame(data, "waiting");
     };
 
+    async function loadGame() {
+      const { data } = await sb.from("games").select("*").eq("code", code).maybeSingle();
+      if (data) game = data;
+      showMode();
+    }
+    function showMode() {
+      $("modeBox").textContent = game.mode === "teams"
+        ? "👥 Teams: players are split into Honey and Stingers when you start. One pickup busts the whole team."
+        : "🙋 Solo: everyone for themselves.";
+      $("teamsBox").hidden = !(status === "live" && game.mode === "teams");
+    }
+
     function openGame(c, s) {
       code = c;
+      loadGame();
       $("setup").hidden = true;
       $("game").hidden = false;
       $("code").textContent = code;
@@ -240,7 +280,7 @@
       sb.channel("host-" + code)
         .on("postgres_changes", { event: "*", schema: "public", table: "results", filter: `game=eq.${code}` }, loadPlayers)
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "games", filter: `code=eq.${code}` },
-            p => { setStatus(p.new.status); gameSpeaker = p.new.speaker ?? null; renderSpeaker(); })
+            p => { game = p.new; setStatus(p.new.status); gameSpeaker = p.new.speaker ?? null; renderSpeaker(); })
         .subscribe();
 
       // Already sent to the speaker (e.g. after a refresh)? Otherwise use it if it's online.
@@ -261,7 +301,25 @@
       $("endBtn").hidden = s !== "live";
       $("resultsBtn").hidden = s !== "ended";
       updateCount();
+      showMode();
+      if (s === "live" && !game.start_time) loadGame();
+      if (s !== "waiting" && s !== "live") $("phaseBox").hidden = true;
     }
+
+    // ---------- Focus / break timer (same math as the database) ----------
+    const mmss = x => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
+    setInterval(() => {
+      if (status !== "live" || !game.start_time) return;
+      const box = $("phaseBox");
+      box.hidden = false;
+      if (!(game.pomo_work > 0)) { box.textContent = "🍅 No breaks this game"; box.classList.remove("break"); return; }
+      const t = (Date.now() - new Date(game.start_time)) / 1000;
+      const w = game.pomo_work * 60, c = (game.pomo_work + game.pomo_break) * 60, m = t % c;
+      box.classList.toggle("break", m >= w);
+      box.textContent = m >= w ? `☕ Break · ${mmss(c - m)} left. Phones are OK.`
+        : (t >= c && m < 15) ? `⏰ Break's over. Phones down in ${Math.ceil(15 - m)}s`
+        : `🍅 Focus · ${mmss(w - m)} until break · ${POMO[game.pomo_choice] ?? ""}`;
+    }, 1000);
 
     // While waiting: every 8 seconds, drop players whose phone went quiet (closed browser, dead phone)
     setInterval(async () => {
@@ -274,12 +332,31 @@
     // ---------- 3. Player list (names are set with textContent, so they can't run code) ----------
     async function loadPlayers() {
       const { data } = await sb.from("results")
-        .select("user_id, pickups, alarm_on, is_shaking, shake_secs_needed, shake_secs_done, profiles(username)")
+        .select("user_id, pickups, alarm_on, is_shaking, shake_secs_needed, shake_secs_done, team, pomo_vote, pass_until, alarm_cause, profiles(username)")
         .eq("game", code);
       players = data || [];
       for (const p of players) if (p.is_shaking) lastShakeSeen[p.user_id] = Date.now();
       renderPlayers();
       updateCount();
+
+      // Lobby: pomodoro votes so far
+      if (status === "waiting") {
+        const n = {};
+        players.forEach(p => { if (p.pomo_vote) n[p.pomo_vote] = (n[p.pomo_vote] || 0) + 1; });
+        const votes = Object.entries(n).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${POMO[k] ?? k}: ${v}`);
+        $("phaseBox").hidden = false;
+        $("phaseBox").textContent = "🍅 Pomodoro votes · " + (votes.length ? votes.join(" · ") : "none yet (Classic if nobody votes)");
+      }
+
+      // Teams: total pickups per team, the team with fewer is highlighted
+      if (game.mode === "teams") {
+        const tot = { 1: 0, 2: 0 };
+        players.forEach(p => { if (p.team) tot[p.team] += p.pickups; });
+        $("team1").querySelector("b").textContent = tot[1];
+        $("team2").querySelector("b").textContent = tot[2];
+        $("team1").classList.toggle("lead", tot[1] < tot[2]);
+        $("team2").classList.toggle("lead", tot[2] < tot[1]);
+      }
     }
 
     // Start only unlocks at 4+ players
@@ -317,12 +394,20 @@
         av.textContent = name.charAt(0).toUpperCase();
         const who = document.createElement("span");
         who.className = "who";
-        who.textContent = name;
+        const team = game.mode === "teams" && p.team ? (p.team === 1 ? "🍯 " : "🐝 ") : "";
+        who.textContent = team + name;
         const chip = document.createElement("span");
         const left = Math.max(0, Math.ceil(p.shake_secs_needed - p.shake_secs_done));
-        if (!p.alarm_on) {
+        const onPass = p.pass_until && new Date(p.pass_until) > Date.now();
+        if (status === "waiting") {
+          chip.className = "chip clean";
+          chip.textContent = p.pomo_vote ? "Ready · voted" : "Ready";
+        } else if (onPass) {
+          chip.className = "chip shaking";
+          chip.textContent = "🆘 Emergency pass";
+        } else if (!p.alarm_on) {
           chip.className = "chip" + (p.pickups === 0 ? " clean" : "");
-          chip.textContent = p.pickups === 0 ? (status === "waiting" ? "Ready" : "Clean") : `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`;
+          chip.textContent = p.pickups === 0 ? "Clean" : `${p.pickups} pickup${p.pickups === 1 ? "" : "s"}`;
         } else if (soundOn(p)) {
           chip.className = "chip busted";
           chip.textContent = `Busted, ${left}s of shaking left`;
@@ -335,18 +420,72 @@
       }));
     }
 
+    // ---------- AI roasts: Gemini writes one per pickup, ElevenLabs voices it (the "roast" Supabase function) ----------
+    // One roast per pickup (saves credits). In teams, the whole busted team shares the roast of whoever slipped.
+    const roasts = {};                 // bust key -> "loading" | { url (mp3), text }
+    const voice = new Audio();
+    let playingFor = null;             // whose roast is playing right now
+
+    const culprit = p => p.alarm_cause || p.user_id;
+    function bustKey(p) {
+      const who = players.find(x => x.user_id === culprit(p)) || p;
+      return culprit(p) + ":" + who.pickups;
+    }
+
+    async function getRoast(key, userId) {
+      roasts[key] = "loading";
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/roast`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ game: code, user_id: userId }),
+          signal: AbortSignal.timeout(12000),
+        });
+        if (!r.ok) throw new Error(r.status);
+        if ((r.headers.get("content-type") || "").includes("audio")) {
+          roasts[key] = { url: URL.createObjectURL(await r.blob()), text: decodeURIComponent(r.headers.get("X-Roast-Text") || "") };
+        } else {
+          roasts[key] = { text: (await r.json()).text };        // no voice credits left: the laptop reads the text
+        }
+      } catch {
+        roasts[key] = {};                                         // function down: built-in roasts
+      }
+    }
+
+    function stopTalking() {
+      speechSynthesis.cancel();
+      voice.pause();
+      playingFor = null;
+    }
+
     // ---------- Roast loop: keeps talking while anyone's sound is on, silent while they shake ----------
     setInterval(() => {
       if (!code) return;
       renderPlayers();
       const loud = players.filter(soundOn);
-      if (!loud.length || !laptopTalks()) { speechSynthesis.cancel(); return; }
-      if (!speechSynthesis.speaking) {
-        const p = loud[Math.floor(Math.random() * loud.length)];
-        speak(ROASTS[Math.floor(Math.random() * ROASTS.length)](p.profiles?.username ?? "Someone"));
+      if (!loud.length || !laptopTalks()) { stopTalking(); return; }
+
+      // The person we're roasting started shaking (or is done)? Stop right away.
+      if (playingFor && !loud.some(p => p.user_id === playingFor)) stopTalking();
+
+      // Ask for a fresh roast for every new pickup
+      for (const p of loud) if (!roasts[bustKey(p)]) getRoast(bustKey(p), culprit(p));
+
+      if (!voice.paused || speechSynthesis.speaking) return;   // still talking
+      const p = loud[Math.floor(Math.random() * loud.length)];
+      const r = roasts[bustKey(p)];
+      if (r === "loading") return;                             // AI roast on its way (a second or two)
+      playingFor = p.user_id;
+      if (r?.url) {
+        voice.src = r.url;
+        voice.play().catch(() => speak(r.text || fallback(p)));
+      } else {
+        speak(r?.text || fallback(p));
       }
     }, 500);
 
+    const fallback = p => ROASTS[Math.floor(Math.random() * ROASTS.length)](p.profiles?.username ?? "Someone");
     function speak(text) {
       speechSynthesis.cancel();
       speechSynthesis.speak(new SpeechSynthesisUtterance(text));
@@ -426,7 +565,7 @@
     $("endBtn").onclick = async () => {
       const { error } = await sb.rpc("finish_game", { p_code: code });
       if (error) { $("msg").textContent = error.message; return; }
-      speechSynthesis.cancel();
+      stopTalking();
       setStatus("ended");
     };
 
@@ -443,7 +582,7 @@
       }
       const { error } = await sb.rpc("cancel_game", { p_code: code });
       if (error) { $("msg").textContent = error.message; return; }
-      speechSynthesis.cancel();
+      stopTalking();
       location.reload();     // back to "New game"
     };
 

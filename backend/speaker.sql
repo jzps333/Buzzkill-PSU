@@ -1,4 +1,4 @@
--- Buzzkill: play roasts from the Pi's Bluetooth speaker instead of the laptop (run after lobby.sql)
+-- Buzzkill: play roasts from the Pi's Bluetooth speaker instead of the laptop (run after features.sql)
 --
 -- 1. The Pi checks in every few seconds (speakers.last_seen), so the host page knows it's online.
 -- 2. The host page picks where a game's roasts play: games.speaker = the Pi's id, or null = not the Pi.
