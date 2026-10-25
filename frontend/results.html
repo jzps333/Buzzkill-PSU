@@ -109,7 +109,6 @@
 
     <div class="team-win" id="teamWin" hidden></div>
     <div class="list" id="list"></div>
-    <div class="legend" id="solBox" hidden></div>
 
     <div class="legend" id="legend" hidden>
       <b>Iron Will</b>: zero pickups the whole game. <b>Doomscroller</b>: the most pickups. <b>First to Fold</b>: picked up first.
@@ -144,7 +143,7 @@
       if (error || !data?.length) { $("sub").textContent = `Game ${room}`; empty("No results for this game yet."); return; }
 
       const winner = data[0];
-      const { data: g } = await sb.from("games").select("mode, pomo_choice, host_id").eq("code", room).maybeSingle();
+      const { data: g } = await sb.from("games").select("mode, pomo_choice").eq("code", room).maybeSingle();
       const POMO = { sprint: "Sprint pomodoro", classic: "Classic pomodoro", deep: "Deep pomodoro", none: "no breaks" };
       $("title").textContent = winner.pickups === 0 ? `${winner.username} stayed focused` : "Game over";
       $("sub").textContent = `Game ${room}, ${data.length} player${data.length === 1 ? "" : "s"}` +
@@ -188,46 +187,6 @@
         return card;
       }));
       $("legend").hidden = !anyBadge;
-      loadBets(g, data);
-    }
-
-    // ---------- SOL bets: who won the pot, with links to the payments on the blockchain ----------
-    async function loadBets(g, players) {
-      const { data: bets } = await sb.from("stakes").select("user_id, amount, payout, status, payout_tx").eq("game", room).neq("status", "pending");
-      if (!bets?.length) return;
-      const name = id => players.find(p => p.user_id === id)?.username ?? "someone who left";
-      const pot = bets.reduce((a, b) => a + Number(b.amount), 0);
-      const box = $("solBox");
-      box.replaceChildren(el("b", "", `💰 SOL pot: ${+pot.toFixed(4)} test SOL. Last one standing takes it all.`));
-      for (const b of bets) {
-        const line = el("div", "", "");
-        const got = Number(b.payout || 0);
-        line.textContent = `${name(b.user_id)}: bet ${+Number(b.amount).toFixed(4)}, ` +
-          (b.status === "paid" ? `got ${+got.toFixed(4)} ✅ ` : b.status === "lost" ? "lost it 💸" : "payout not sent yet ⏳ ");
-        if (b.payout_tx) {
-          const a = el("a", "", "view");
-          a.href = `https://explorer.solana.com/tx/${b.payout_tx}?cluster=devnet`;
-          a.target = "_blank"; a.rel = "noopener";
-          line.append(a);
-        }
-        box.append(line);
-      }
-      // Host: retry any payouts that didn't go through
-      const { data: { session } } = await sb.auth.getSession();
-      if (session?.user.id === g?.host_id && bets.some(b => !["paid", "lost"].includes(b.status))) {
-        const btn = el("button", "btn", "Send SOL payouts");
-        btn.onclick = async () => {
-          btn.disabled = true; btn.textContent = "Sending…";
-          await fetch(`${SUPABASE_URL}/functions/v1/sol`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
-            body: JSON.stringify({ action: "payout", game: room }),
-          }).catch(() => {});
-          load();
-        };
-        box.append(btn);
-      }
-      box.hidden = false;
     }
 
     load();

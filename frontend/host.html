@@ -182,7 +182,6 @@
         <div class="bar" id="bar"><span id="barFill"></span></div>
         <p class="info" id="modeBox"></p>
         <p class="info" id="phaseBox" hidden></p>
-        <p class="info" id="potBox" hidden></p>
         <div class="teams" id="teamsBox" hidden>
           <div id="team1">🍯 Honey<b>0</b><small>pickups</small></div>
           <div id="team2">🐝 Stingers<b>0</b><small>pickups</small></div>
@@ -278,12 +277,10 @@
       $("link").textContent = `${location.host}/join?room=${code}`;
       setStatus(s);
       loadPlayers();
-      loadPot();
 
       // Live updates: players joining, pickups, alarms
       sb.channel("host-" + code)
         .on("postgres_changes", { event: "*", schema: "public", table: "results", filter: `game=eq.${code}` }, loadPlayers)
-        .on("postgres_changes", { event: "*", schema: "public", table: "stakes", filter: `game=eq.${code}` }, loadPot)
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "games", filter: `code=eq.${code}` },
             p => { game = p.new; setStatus(p.new.status); gameSpeaker = p.new.speaker ?? null; renderSpeaker(); })
         .subscribe();
@@ -418,7 +415,7 @@
         const onPass = p.pass_until && new Date(p.pass_until) > Date.now();
         if (status === "waiting") {
           chip.className = "chip clean";
-          chip.textContent = (p.pomo_vote ? "Ready · voted" : "Ready") + (bets[p.user_id] ? ` · 💰${bets[p.user_id]}` : "");
+          chip.textContent = p.pomo_vote ? "Ready · voted" : "Ready";
         } else if (onPass) {
           chip.className = "chip shaking";
           chip.textContent = "🆘 Emergency pass";
@@ -591,42 +588,12 @@
       if (error) $("msg").textContent = error.message; else setStatus("live");
     };
 
-    // ---------- SOL bets (optional): the pot, and paying it out at the end ----------
-    const bets = {};                  // user_id -> SOL they bet
-    async function loadPot() {
-      const { data } = await sb.from("stakes").select("user_id, amount, status").eq("game", code).neq("status", "pending");
-      for (const k in bets) delete bets[k];
-      (data || []).forEach(b => bets[b.user_id] = (bets[b.user_id] || 0) + Number(b.amount));
-      const total = Object.values(bets).reduce((a, b) => a + b, 0), n = Object.keys(bets).length;
-      $("potBox").hidden = !n;
-      $("potBox").textContent = `💰 Pot: ${+total.toFixed(4)} test SOL from ${n} player${n === 1 ? "" : "s"} · last one standing takes it all`
-        + (n === 1 ? " (needs 2+ betters, or it's refunded)" : "");
-      renderPlayers();
-    }
-    async function payOut() {
-      if (!Object.keys(bets).length) return;
-      $("msg").textContent = "💸 Sending SOL winnings and refunds…";
-      try {
-        const { data: { session } } = await sb.auth.getSession();
-        const r = await (await fetch(`${SUPABASE_URL}/functions/v1/sol`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
-          body: JSON.stringify({ action: "payout", game: code }),
-        })).json();
-        $("msg").textContent = r.error ? "Payout problem: " + r.error
-          : `💸 SOL sent: ${r.paid} payout${r.paid === 1 ? "" : "s"}` + (r.failed ? ` · ${r.failed} failed (open the results page to retry)` : "");
-      } catch {
-        $("msg").textContent = "Couldn't send the SOL yet. Open the results page to retry.";
-      }
-    }
-
     // ---------- 5. End + pay out ----------
     $("endBtn").onclick = async () => {
       const { error } = await sb.rpc("finish_game", { p_code: code });
       if (error) { $("msg").textContent = error.message; return; }
       stopTalking();
       setStatus("ended");
-      payOut();
     };
 
     $("resultsBtn").onclick = () => location.href = "results?room=" + code;
@@ -643,7 +610,6 @@
       const { error } = await sb.rpc("cancel_game", { p_code: code });
       if (error) { $("msg").textContent = error.message; return; }
       stopTalking();
-      await payOut();        // everyone who bet gets it back
       location.reload();     // back to "New game"
     };
 
