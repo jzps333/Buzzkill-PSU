@@ -5,11 +5,13 @@ Supabase handles logins and the database. There's no server code to run for this
 ## Setup (once)
 
 1. Make a project at supabase.com.
-2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same with `events.sql`. (Both are already done for the buzzkill project.)
+2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same with `events.sql`, then `security.sql`. (All three are already done for the buzzkill project.)
 3. **Authentication → Sign In / Providers**:
    - Turn **on** "Allow anonymous sign-ins" (this is how guests work).
    - Turn **off** "Confirm email" (so signups work instantly at the hackathon).
-4. **Project Settings → API** → copy the URL and the **anon** key into `frontend/config.js`.
+4. **Authentication → URL Configuration**: Site URL = `https://buzzkill-psu.vercel.app`, Redirect URL = `https://buzzkill-psu.vercel.app/**`.
+5. **Google login**: see "Google sign-in" below.
+6. **Project Settings → API** → copy the URL and the **anon** key into `frontend/config.js`.
 
 ## Tables
 
@@ -62,3 +64,20 @@ To know who a phone belongs to, the phone sends its login token, and the Pi chec
 user = sb.auth.get_user(token).user   # token from the phone: (await sb.auth.getSession()).data.session.access_token
 user_id = user.id
 ```
+
+## Google sign-in
+
+1. Go to console.cloud.google.com → make a project → **APIs & Services → OAuth consent screen** → External → fill in app name and your email.
+2. **Credentials → Create credentials → OAuth client ID** → Web application.
+   - Authorized JavaScript origin: `https://buzzkill-psu.vercel.app`
+   - Authorized redirect URI: `https://qlfqgyrwrihwomadqjsh.supabase.co/auth/v1/callback`
+3. Copy the **Client ID** and **Client secret**.
+4. Supabase → **Authentication → Sign In / Providers → Google** → turn on → paste both → Save.
+
+## Security rules (security.sql)
+
+- Players can only change their own username and wallet. Nobody can edit pickups, SOL, or games except the Pi.
+- Phones can only send events as themselves, for an open game. Nobody can read other people's events.
+- Usernames: max 30 characters. Wallets must look like real Solana addresses.
+- The website escapes usernames before showing them, so nobody can sneak code in through their name.
+- `vercel.json` adds browser security headers (blocks other sites from embedding ours, limits where the page can connect).

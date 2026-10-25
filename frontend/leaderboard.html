@@ -26,23 +26,26 @@
     </table>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
   <script>
+    // Turn text into safe text, so a username like <script> shows as words instead of running as code
+    const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const num = n => esc(Number(n));
     const sol = n => n === null ? "–" : `<span class="${n >= 0 ? "up" : "down"}">${n >= 0 ? "+" : ""}${Number(n).toFixed(3)}</span>`;
 
     async function load() {
       const { data, error } = await sb.from("leaderboard").select("*");
       const rows = document.getElementById("rows");
-      if (error) { rows.innerHTML = `<tr><td colspan="7">${error.message}</td></tr>`; return; }
+      if (error) { rows.innerHTML = `<tr><td colspan="7">${esc(error.message)}</td></tr>`; return; }
       if (!data.length) { rows.innerHTML = `<tr><td colspan="7">No finished games yet.</td></tr>`; return; }
       rows.innerHTML = data.map((p, i) => `
         <tr>
           <td>${i + 1}</td>
-          <td>${p.username}</td>
-          <td class="num">${p.games}</td>
-          <td class="num">${p.pickups_per_hour}</td>
-          <td class="num">${p.clean_pct}%</td>
+          <td>${esc(p.username)}</td>
+          <td class="num">${num(p.games)}</td>
+          <td class="num">${num(p.pickups_per_hour)}</td>
+          <td class="num">${num(p.clean_pct)}%</td>
           <td class="num">${sol(p.avg_sol)}</td>
           <td class="num">${sol(p.total_sol)}</td>
         </tr>`).join("");

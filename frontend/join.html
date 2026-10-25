@@ -21,10 +21,12 @@
   <button id="start" hidden>I'm ready</button>
   <div id="debug"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="vendor/supabase.js"></script>
   <script src="config.js"></script>
   <script>
-    const room = new URLSearchParams(location.search).get("room");
+    // Room codes are only letters and numbers. Anything else is ignored.
+    const rawRoom = new URLSearchParams(location.search).get("room") || "";
+    const room = /^[A-Za-z0-9]{4,12}$/.test(rawRoom) ? rawRoom.toUpperCase() : null;
     const $ = id => document.getElementById(id);
     const show = (big, status, hint = "") => { $("big").textContent = big; $("status").textContent = status; $("hint").textContent = hint; };
 
