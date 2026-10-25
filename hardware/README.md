@@ -14,6 +14,7 @@ The Pi only needs to do 3 things, using the secret key in `.env`:
 | Tap (no game) | `create_game()` → returns a code like `4F2A9C` | Write `https://www.buzzkill.study/join?room=CODE` to the NFC tag |
 | Tap (waiting) | `start_game(p_code)` | Game goes live. Fails with an error if fewer than 4 players joined, so play a "need more players" sound |
 | Hold 3 s | `finish_game(p_code)` | Game ends, SOL payouts are calculated |
+| (optional) | `cancel_game(p_code)` | Close a game that hasn't started yet |
 
 ```python
 code = sb.rpc("create_game").execute().data
@@ -34,7 +35,9 @@ sb.rpc("finish_game", {"p_code": code}).execute()
 Safety rule: while someone is shaking, their row updates about twice a second. If you get no update
 for 2 seconds while `is_shaking` is still true (their phone died or lost signal), treat it as stopped and play the sound.
 
-**3. Players joining:** nothing to do. Phones handle it, and new rows show up in `results`.
+**3. Players joining:** phones handle it, and new rows show up in `results`. While the game is waiting,
+call `prune_lobby(p_code)` every ~8 seconds so players who closed their browser get removed
+(rows are deleted, so listen for Realtime `DELETE`s too if you show a player count).
 
 ## Backup
 

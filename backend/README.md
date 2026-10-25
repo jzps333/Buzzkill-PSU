@@ -5,7 +5,7 @@ Supabase handles logins and the database. There's no server code to run for this
 ## Setup (once)
 
 1. Make a project at supabase.com.
-2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same, in order, with `events.sql`, `security.sql`, `game.sql`, `shake_ramp.sql`, `friends.sql`, `phone_only.sql`. (All are already done for the buzzkill project.)
+2. **SQL Editor** → paste all of `schema.sql` → **Run**. Then do the same, in order, with `events.sql`, `security.sql`, `game.sql`, `shake_ramp.sql`, `friends.sql`, `phone_only.sql`, `lobby.sql`. (All are already done for the buzzkill project.)
 3. **Authentication → Sign In / Providers**:
    - Turn **on** "Allow anonymous sign-ins" (this is how guests work).
    - Turn **off** "Confirm email" (so signups work instantly at the hackathon).
@@ -37,11 +37,13 @@ Supabase handles logins and the database. There's no server code to run for this
 
 The database is the referee. Phones only send events; a trigger does the rest:
 
-- `join` (game waiting) → adds the player to `results`
+- `join` / `ping` (game waiting) → adds the player to `results` (or refreshes `last_seen`). Phones ping every ~8s while waiting
+- `leave` (game waiting) → player closed the page before the start: removed from the game
 - `pickup` / `left_page` (game live) → +1 pickup, `alarm_on = true`, shaking needed: 10s, 30s, 1 min, then +30s each pickup after (`shake_ramp.sql`)
 - `shake` → phones send this ~2×/second while shaking; it adds up shaking time and sets `is_shaking = true` (sound paused). Enough time = alarm off
 - `shake_stop` → phone stopped shaking early: `is_shaking = false`, sound comes back
 - `create_game()`, `start_game(code)`, `finish_game(code)` run games. `start_game` refuses to start with fewer than 4 players, for everyone. Only the Pi (secret key) or the person who created the game can call them. `finish_game` also calculates payouts.
+- `prune_lobby(code)` drops waiting players silent for 25s (host page calls it every 8s; `start_game` does it too). `cancel_game(code)` closes a game that hasn't started (status `cancelled`, never counts in stats)
 
 See `hardware/README.md` for what the Pi does.
 

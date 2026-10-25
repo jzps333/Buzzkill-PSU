@@ -38,6 +38,7 @@
     <button id="startBtn">Start game</button>
     <button id="endBtn" class="danger" hidden>End game</button>
     <button id="resultsBtn" class="ghost" hidden>See results</button>
+    <button id="closeBtn" class="ghost" hidden>Close game</button>
     <label><input type="checkbox" id="voice"> Play roasts out loud from this device</label>
   </div>
 
@@ -97,11 +98,20 @@
 
     function setStatus(s) {
       status = s;
-      $("status").textContent = { waiting: "Waiting for players", live: "🔴 Game is live", ended: "Game over" }[s];
+      $("status").textContent = { waiting: "Waiting for players", live: "🔴 Game is live", ended: "Game over", cancelled: "Game closed" }[s];
       $("startBtn").hidden = s !== "waiting";
+      $("closeBtn").hidden = s !== "waiting";
       $("endBtn").hidden = s !== "live";
       $("resultsBtn").hidden = s !== "ended";
     }
+
+    // While waiting: every 8 seconds, drop players whose phone went quiet (closed browser, dead phone)
+    setInterval(async () => {
+      if (code && status === "waiting") {
+        const { data: removed } = await sb.rpc("prune_lobby", { p_code: code });
+        if (removed) loadPlayers();
+      }
+    }, 8000);
 
     // ---------- 3. Player list (names are set with textContent, so they can't run code) ----------
     async function loadPlayers() {
@@ -176,6 +186,21 @@
     };
 
     $("resultsBtn").onclick = () => location.href = "results?room=" + code;
+
+    // ---------- 6. Close the game before it starts (asks twice). It won't count in anyone's stats. ----------
+    $("closeBtn").onclick = async () => {
+      const b = $("closeBtn");
+      if (!b.dataset.sure) {
+        b.dataset.sure = "1";
+        b.textContent = "Tap again to close this game";
+        setTimeout(() => { delete b.dataset.sure; b.textContent = "Close game"; }, 3000);
+        return;
+      }
+      const { error } = await sb.rpc("cancel_game", { p_code: code });
+      if (error) { $("msg").textContent = error.message; return; }
+      speechSynthesis.cancel();
+      location.reload();     // back to "New game"
+    };
 
     init();
   </script>
