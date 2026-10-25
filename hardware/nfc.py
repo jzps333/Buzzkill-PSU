@@ -15,8 +15,10 @@ BUS = 1              # Pi pins 3 (SDA) and 5 (SCL)
 ADDR = 0x53          # ST25DV user memory
 DEFAULT_URL = "https://buzzkill-psu.vercel.app/"
 
-# Capability Container for a 64 Kbit (8 KB) tag: tells phones "there's NDEF data here"
-CC = bytes([0xE2, 0x40, 0x00, 0x01, 0x00, 0x00, 0x04, 0x00])
+SYS = 0x57          # ST25DV settings
+# Capability Container for a 64 Kbit (8 KB) tag: tells phones "there's NDEF data here".
+# Last 2 bytes = NDEF area size / 8 = (8192 - 8) / 8 = 0x03FF, same as ST's own apps write.
+CC = bytes([0xE2, 0x40, 0x00, 0x01, 0x00, 0x00, 0x03, 0xFF])
 
 # NFC shorthand for common link starts (saves bytes)
 PREFIXES = [(0x04, "https://"), (0x03, "http://"), (0x02, "https://www."), (0x01, "http://www.")]
@@ -39,22 +41,22 @@ def ndef_url(url):
     return tlv + record + bytes([0xFE])                           # 0xFE = end
 
 
-def write(bus, mem, data):
+def write(bus, mem, data, addr=ADDR):
     # The chip saves 4 bytes at a time, so write in 4-byte pieces and wait for each to finish
     for i in range(0, len(data), 4):
         a = mem + i
-        bus.i2c_rdwr(i2c_msg.write(ADDR, [a >> 8, a & 0xFF, *data[i:i + 4]]))
+        bus.i2c_rdwr(i2c_msg.write(addr, [a >> 8, a & 0xFF, *data[i:i + 4]]))
         for _ in range(50):          # chip ignores I2C while saving (~5 ms)
             try:
-                bus.i2c_rdwr(i2c_msg.write(ADDR, [a >> 8, a & 0xFF]))
+                bus.i2c_rdwr(i2c_msg.write(addr, [a >> 8, a & 0xFF]))
                 break
             except OSError:
                 time.sleep(0.002)
 
 
-def read(bus, mem, n):
-    w = i2c_msg.write(ADDR, [mem >> 8, mem & 0xFF])
-    r = i2c_msg.read(ADDR, n)
+def read(bus, mem, n, addr=ADDR):
+    w = i2c_msg.write(addr, [mem >> 8, mem & 0xFF])
+    r = i2c_msg.read(addr, n)
     bus.i2c_rdwr(w, r)
     return bytes(r)
 
@@ -79,9 +81,36 @@ def read_url():
     return prefix + rec[5:4 + n].decode(errors="replace")
 
 
+def check():
+    """Print the settings that decide whether phones can read the tag at all."""
+    with SMBus(BUS) as bus:
+        cc = read(bus, 0x0000, 8)
+        rf = read(bus, 0x0003, 1, SYS)[0]        # bit 0 = radio off, bit 1 = radio asleep
+        rf_now = read(bus, 0x2003, 1)[0]
+        area1 = read(bus, 0x0004, 1, SYS)[0]     # bits 2-3 = phone read protection
+    print("CC:", cc.hex(" "), "(good)" if cc == CC else "(old, run: python3 nfc.py)")
+    print("Radio setting:", "ON" if rf & 3 == 0 else f"OFF ({rf:#04x}), run: python3 nfc.py --fix-rf")
+    print("Radio right now:", "ON" if rf_now & 3 == 0 else f"OFF ({rf_now:#04x}), run: python3 nfc.py --fix-rf")
+    print("Phone read lock:", "none" if area1 & 0x0C == 0 else f"LOCKED ({area1:#04x})")
+
+
+def fix_rf():
+    with SMBus(BUS) as bus:
+        write(bus, 0x2003, [0x00])                                  # radio on now
+        pw = [0] * 8                                                 # factory password is all zeros
+        bus.i2c_rdwr(i2c_msg.write(SYS, [0x09, 0x00, *pw, 0x09, *pw]))   # unlock settings
+        time.sleep(0.01)
+        write(bus, 0x0003, [0x00], SYS)                             # radio on after power-up too
+    check()
+
+
 if __name__ == "__main__":
     if "--read" in sys.argv:
         print(read_url())
+    elif "--check" in sys.argv:
+        check()
+    elif "--fix-rf" in sys.argv:
+        fix_rf()
     else:
         url = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_URL
         write_url(url)
