@@ -1,0 +1,20 @@
+#!/bin/bash
+# Run once on the Pi:  bash setup.sh
+set -e
+cd "$(dirname "$0")"
+
+sudo raspi-config nonint do_i2c 0          # turn on I2C (pins 3 and 5)
+sudo apt update
+sudo apt install -y i2c-tools python3-smbus2 python3-gpiozero python3-lgpio python3-requests \
+  espeak-ng bluez pipewire pipewire-pulse pipewire-alsa wireplumber libspa-0.2-bluetooth
+
+# Let sound + the brick keep running after you log out of SSH
+sudo loginctl enable-linger "$USER"
+systemctl --user enable --now pipewire pipewire-pulse wireplumber
+
+[ -f .env ] || cp .env.example .env
+
+mkdir -p ~/.config/systemd/user
+sed "s#__DIR__#$PWD#" buzzkill.service > ~/.config/systemd/user/buzzkill.service
+systemctl --user daemon-reload
+echo "Done. Next: pair the speaker (see README), then: systemctl --user enable --now buzzkill"

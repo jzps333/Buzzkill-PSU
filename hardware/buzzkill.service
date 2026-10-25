@@ -1,0 +1,12 @@
+[Unit]
+Description=Buzzkill brick (NFC + touch + speaker)
+After=pipewire.service wireplumber.service
+
+[Service]
+WorkingDirectory=__DIR__
+ExecStart=/usr/bin/python3 -u brick.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

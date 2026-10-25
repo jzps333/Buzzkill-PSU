@@ -41,10 +41,53 @@ for 2 seconds while `is_shaking` is still true (their phone died or lost signal)
 If the brick isn't working, anyone logged in can run a game from `https://www.buzzkill.study/host`.
 It can also play the roasts out loud from the laptop.
 
-## Wiring (Pi 4B, 3.3V only)
+## Wiring (Pi 4B, 3.3V only, never 5V)
 
-| Part | Pin | Pi pin |
+| Part | Wire | Pi pin |
 |---|---|---|
-| ST25DV64K NFC | VCC / GND / SDA / SCL | 1 / 6 / 3 / 5 |
-| Touch sensor (TTP223) | VCC / GND / SIG | 17 / 9 / 11 (GPIO 17) |
-| Speaker | 3.5 mm jack or USB | |
+| ST25DV64K NFC | VCC | 1 (3.3V) |
+| | GND | 6 |
+| | SDA | 3 (GPIO 2) |
+| | SCL | 5 (GPIO 3) |
+| Touch sensor (TTP223) | VCC | 17 (3.3V) |
+| | GND | 9 |
+| | SIG / I/O | 11 (GPIO 17) |
+| JBL Go 3 | no wires, Bluetooth (it has no aux jack) | |
+
+## Getting it running (over SSH)
+
+```bash
+git clone https://github.com/jzps333/Buzzkill-PSU.git ~/Buzzkill-PSU   # or: cd ~/Buzzkill-PSU && git pull
+cd ~/Buzzkill-PSU/hardware
+bash setup.sh
+sudo reboot                      # only needed the first time, so I2C turns on
+```
+
+**1. NFC tag** — check the Pi sees it, then write the link:
+```bash
+i2cdetect -y 1                   # should show 53 and 57 (and maybe 2d)
+python3 nfc.py                   # tag now opens https://buzzkill-psu.vercel.app/
+```
+Tap a phone on the tag's antenna (the flat coil). iPhone: screen on, top edge of the phone. Android: NFC on, middle of the back.
+
+**2. Touch sensor:** `python3 test_touch.py`, touch the pad, it should print `touched`.
+
+**3. JBL Go 3** — hold its Bluetooth button until it flashes blue fast, then:
+```bash
+bluetoothctl
+  power on
+  scan on            # wait for "JBL GO 3" and copy its address, e.g. AA:BB:CC:DD:EE:FF
+  pair AA:BB:CC:DD:EE:FF
+  trust AA:BB:CC:DD:EE:FF
+  connect AA:BB:CC:DD:EE:FF
+  exit
+espeak-ng "Put your phone down"  # should come out of the JBL
+```
+If it plays from the wrong place: `wpctl status`, find the JBL under Sinks, `wpctl set-default <its number>`.
+
+**4. Run it:** put the speaker address in `.env` as `SPEAKER_MAC=...` (and the `sb_secret` key if you want games), then
+```bash
+systemctl --user enable --now buzzkill    # starts now and on every boot
+journalctl --user -u buzzkill -f          # watch the logs
+```
+Without the secret key the brick just points the tag at the website and talks when touched. With it, tap/hold runs games as described above.
