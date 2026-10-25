@@ -118,7 +118,7 @@ Everything plugs into the Grove Base Hat with the Grove cables. No loose wires.
 | Part | Plug into | Pi pins it uses |
 |---|---|---|
 | Grove NFC (ST25DV64) | any port labeled **I2C** (right column) | SDA / SCL (GPIO 2 / 3) |
-| Grove LCD RGB Backlight v4.0 | another **I2C** port | SDA / SCL (addresses 3e + 62) |
+| Grove LCD RGB Backlight v4.0 | another **I2C** port | SDA / SCL (address 3e; used black and white) |
 | Grove Touch Sensor | port **D5** | GPIO 5 (set `TOUCH_PIN` in `.env` if you use another D port: D16 = 16, D18 = 18, ...) |
 | JBL Go 3 | no cable, Bluetooth (it has no aux jack) | |
 
@@ -205,8 +205,8 @@ Two programs run on the Pi:
 
 Games started from `/host` with the Buzzkill speaker show up on the LCD too.
 
-`i2cdetect -y 1` should show **3e** (text) and **62** (backlight). Only 3e = the text works but the colors don't:
-the v4.0 backlight chip usually needs **5V**, and the Grove hat's I2C ports give 3.3V. It still works fine as a text screen.
+`i2cdetect -y 1` should show **3e**. The screen is used black and white: on our hat its backlight chip (62) doesn't
+show up (it likely needs 5V), so the Color column above is ignored.
 
 **NFC stickers / QR code:** write `https://buzzkill-psu.vercel.app/brick` on them (NFC Tools app → Write → URL).
 That page always forwards to the game the brick is running, so one sticker works for every game.
