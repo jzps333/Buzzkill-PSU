@@ -71,7 +71,9 @@
     .stat span { font-size: 13px; color: var(--ink-2); font-weight: 600; }
     .stat small { display: block; margin-top: 2px; font-size: 12px; color: var(--ink-2); }
     .stats-label { margin: 18px 0 0; font-size: 13px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--ink-2); }
-    .friends-pill { background: var(--honey); color: var(--ink); }
+    .friends-pill { display: inline-flex; align-items: center; justify-content: center; line-height: 1; text-decoration: none; background: var(--honey); color: var(--ink); }
+    .friends-pill:hover { background: #E8A900; }
+    .stats-hint { margin: 12px 0 0; font-size: 13px; color: var(--ink-2); }
     .up { color: var(--green); } .down { color: var(--red); }
     .nemesis { margin-top: 12px; padding: 12px 16px; border-radius: 14px; background: var(--peach); font-size: 14px; font-weight: 600; }
     .empty { margin-top: 10px; font-size: 14px; color: var(--ink-2); }
@@ -226,7 +228,6 @@
     }
 
     function showStats(games) {
-      if (!games.length) { $("stats").textContent = "No finished games yet. Go play one!"; return; }
       games.sort((a, b) => new Date(a.games.end_time) - new Date(b.games.end_time));
 
       const seconds = g => (new Date(g.games.end_time) - new Date(g.games.start_time)) / 1000;
@@ -247,12 +248,13 @@
         const marks = [new Date(g.games.start_time).getTime(), ...times, new Date(g.games.end_time).getTime()];
         for (let i = 1; i < marks.length; i++) stretches.push(Math.max(0, (marks[i] - marks[i - 1]) / 1000));
       }
+      const none = !games.length;
       const avg = stretches.length ? stretches.reduce((a, b) => a + b, 0) / stretches.length : null;
 
       const tiles = [
         ["Overall", [
           ["Games", games.length],
-          ["Clean games", `${Math.round(clean / games.length * 100)}%`, `${clean} with 0 pickups`],
+          ["Clean games", none ? "—" : `${Math.round(clean / games.length * 100)}%`, `${clean} with 0 pickups`],
           ["Clean streak", run, `best: ${best} in a row`],
           ["Pickups / hour", totalSec ? (pickups / (totalSec / 3600)).toFixed(1) : "—"],
           ["Time studied", dur(totalSec)],
@@ -275,6 +277,8 @@
         }
         wrap.append(grid);
       }
+      if (none) wrap.append(el("p", "stats-hint", "These fill in after you finish a game on your phone. (Hosting doesn't count.)"));
+      else if (!stretches.length) wrap.append(el("p", "stats-hint", "Focus times start counting from your next game."));
       $("stats").replaceWith(wrap);
     }
 

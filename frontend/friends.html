@@ -200,7 +200,11 @@
       const { data: mine } = await sb.from("results").select("game, games!inner(status, end_time)")
         .eq("user_id", me).eq("games.status", "ended");
       const games = (mine || []).sort((a, b) => new Date(b.games.end_time) - new Date(a.games.end_time)).slice(0, 15);
-      if (!games.length) { $("recentCard").hidden = true; return; }
+      if (!games.length) {
+        $("recentCard").hidden = false;
+        $("recent").replaceChildren(el("p", "empty", "Play a game and the people you played with show up here, with a quick + Add."));
+        return;
+      }
       const when = Object.fromEntries(games.map(g => [g.game, new Date(g.games.end_time)]));
 
       const { data: others } = await sb.from("results").select("user_id, game, profiles(username, is_guest)")
@@ -213,7 +217,8 @@
         p.last = Math.max(p.last, when[o.game]);
       }
       const list = Object.values(people).sort((a, b) => b.last - a.last).slice(0, 8);
-      $("recentCard").hidden = !list.length;
+      $("recentCard").hidden = false;
+      if (!list.length) { $("recent").replaceChildren(el("p", "empty", "Everyone you've played with lately is already your friend.")); return; }
       $("recent").replaceChildren(...list.map(p => {
         const day = new Date(p.last).toLocaleDateString(undefined, { month: "short", day: "numeric" });
         const add = button("+ Add", "", async () => {
