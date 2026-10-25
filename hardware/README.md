@@ -38,6 +38,21 @@ for 2 seconds while `is_shaking` is still true (their phone died or lost signal)
 In **teams** mode, one pickup turns `alarm_on` on for every player on that team, so several rows can be busted at once.
 Play the sound while ANY player is busted and not shaking. `alarm_cause` says whose pickup it was (good for the roast: "Alex slipped!").
 
+**AI roasts (Gemini writes it, ElevenLabs says it).** When a new pickup happens, ask for a roast once,
+then loop that mp3 with the same rules as above. Teams: ask once, for the `alarm_cause` player.
+
+```python
+import requests, os
+r = requests.post(f"{os.environ['SUPABASE_URL']}/functions/v1/roast",
+                  headers={"apikey": os.environ["SUPABASE_SERVICE_KEY"], "Content-Type": "application/json"},
+                  json={"game": code, "user_id": busted_user_id}, timeout=12)
+if r.headers.get("content-type", "").startswith("audio"):
+    open("/tmp/roast.mp3", "wb").write(r.content)      # play on loop, e.g. mpg123 --loop -1 /tmp/roast.mp3
+else:
+    text = r.json().get("text")                          # no voice available: use espeak, or a built-in sound
+```
+It takes 1-3 seconds, so play a buzzer sound while waiting. If it fails, play your built-in roasts.
+
 **Optional, nice for the demo:** announce breaks. The game row has `start_time`, `pomo_work` and `pomo_break` (minutes);
 call `on_break(p_code)` to check, and say "Break time!" / "Break's over, phones down!" when it changes.
 

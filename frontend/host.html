@@ -196,7 +196,7 @@
       <label class="switch">
         <div>
           <b>Read roasts out loud</b>
-          <span>Plays from this device whenever someone gets busted.</span>
+          <span>AI roasts from this device whenever someone gets busted.</span>
         </div>
         <input type="checkbox" id="voice">
         <span class="track" aria-hidden="true"></span>
@@ -322,7 +322,7 @@
     // ---------- 3. Player list (names are set with textContent, so they can't run code) ----------
     async function loadPlayers() {
       const { data } = await sb.from("results")
-        .select("user_id, pickups, alarm_on, is_shaking, shake_secs_needed, shake_secs_done, team, pomo_vote, pass_until, profiles(username)")
+        .select("user_id, pickups, alarm_on, is_shaking, shake_secs_needed, shake_secs_done, team, pomo_vote, pass_until, alarm_cause, profiles(username)")
         .eq("game", code);
       players = data || [];
       for (const p of players) if (p.is_shaking) lastShakeSeen[p.user_id] = Date.now();
@@ -410,18 +410,72 @@
       }));
     }
 
+    // ---------- AI roasts: Gemini writes one per pickup, ElevenLabs voices it (the "roast" Supabase function) ----------
+    // One roast per pickup (saves credits). In teams, the whole busted team shares the roast of whoever slipped.
+    const roasts = {};                 // bust key -> "loading" | { url (mp3), text }
+    const voice = new Audio();
+    let playingFor = null;             // whose roast is playing right now
+
+    const culprit = p => p.alarm_cause || p.user_id;
+    function bustKey(p) {
+      const who = players.find(x => x.user_id === culprit(p)) || p;
+      return culprit(p) + ":" + who.pickups;
+    }
+
+    async function getRoast(key, userId) {
+      roasts[key] = "loading";
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/roast`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ game: code, user_id: userId }),
+          signal: AbortSignal.timeout(12000),
+        });
+        if (!r.ok) throw new Error(r.status);
+        if ((r.headers.get("content-type") || "").includes("audio")) {
+          roasts[key] = { url: URL.createObjectURL(await r.blob()), text: decodeURIComponent(r.headers.get("X-Roast-Text") || "") };
+        } else {
+          roasts[key] = { text: (await r.json()).text };        // no voice credits left: the laptop reads the text
+        }
+      } catch {
+        roasts[key] = {};                                         // function down: built-in roasts
+      }
+    }
+
+    function stopTalking() {
+      speechSynthesis.cancel();
+      voice.pause();
+      playingFor = null;
+    }
+
     // ---------- Roast loop: keeps talking while anyone's sound is on, silent while they shake ----------
     setInterval(() => {
       if (!code) return;
       renderPlayers();
       const loud = players.filter(soundOn);
-      if (!loud.length || !$("voice").checked) { speechSynthesis.cancel(); return; }
-      if (!speechSynthesis.speaking) {
-        const p = loud[Math.floor(Math.random() * loud.length)];
-        speak(ROASTS[Math.floor(Math.random() * ROASTS.length)](p.profiles?.username ?? "Someone"));
+      if (!loud.length || !$("voice").checked) { stopTalking(); return; }
+
+      // The person we're roasting started shaking (or is done)? Stop right away.
+      if (playingFor && !loud.some(p => p.user_id === playingFor)) stopTalking();
+
+      // Ask for a fresh roast for every new pickup
+      for (const p of loud) if (!roasts[bustKey(p)]) getRoast(bustKey(p), culprit(p));
+
+      if (!voice.paused || speechSynthesis.speaking) return;   // still talking
+      const p = loud[Math.floor(Math.random() * loud.length)];
+      const r = roasts[bustKey(p)];
+      if (r === "loading") return;                             // AI roast on its way (a second or two)
+      playingFor = p.user_id;
+      if (r?.url) {
+        voice.src = r.url;
+        voice.play().catch(() => speak(r.text || fallback(p)));
+      } else {
+        speak(r?.text || fallback(p));
       }
     }, 500);
 
+    const fallback = p => ROASTS[Math.floor(Math.random() * ROASTS.length)](p.profiles?.username ?? "Someone");
     function speak(text) {
       speechSynthesis.cancel();
       speechSynthesis.speak(new SpeechSynthesisUtterance(text));
@@ -438,7 +492,7 @@
     $("endBtn").onclick = async () => {
       const { error } = await sb.rpc("finish_game", { p_code: code });
       if (error) { $("msg").textContent = error.message; return; }
-      speechSynthesis.cancel();
+      stopTalking();
       setStatus("ended");
     };
 
@@ -455,7 +509,7 @@
       }
       const { error } = await sb.rpc("cancel_game", { p_code: code });
       if (error) { $("msg").textContent = error.message; return; }
-      speechSynthesis.cancel();
+      stopTalking();
       location.reload();     // back to "New game"
     };
 
