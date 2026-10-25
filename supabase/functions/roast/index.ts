@@ -55,18 +55,47 @@ const json = (req: Request, body: unknown, status = 200) =>
 // ---------- 1. Gemini writes the roast ----------
 let problems: string[] = [];        // why the AI part failed (sent back to the host so we can fix it)
 
-async function writeRoast(facts: string, name: string): Promise<string> {
+// A different style and angle every time, so no two roasts sound alike
+const STYLES = [
+  "a hyped sports commentator calling a terrible play",
+  "a calm nature documentary narrator watching a creature fail",
+  "a deeply disappointed gym coach",
+  "a breaking-news anchor with urgent news",
+  "a cheesy game show host announcing a loser",
+  "a dramatic movie trailer voice",
+  "a stern courtroom judge reading the sentence",
+  "an airport announcer making a public announcement",
+  "a motivational speaker who has completely given up",
+  "a Shakespearean actor delivering a tragedy",
+  "a smug villain who saw this coming",
+  "a sarcastic tour guide pointing out a landmark",
+];
+const ANGLES = [
+  "how fast they cracked",
+  "how they compare to everyone else at the table",
+  "what they were probably looking at on the phone",
+  "their pickup count and where it is heading",
+  "the rest of the table now judging them",
+  "the grade they are about to get",
+  "how weak their willpower is",
+];
+const SOUNDS = ["Hahaha", "Ha!", "Ooooh", "Yikes", "Pfft", "Wow", "Bzzzz", "Ding ding ding", "Boooo", "Tsk tsk tsk", "Oof", "Mwahaha"];
+const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+
+async function writeRoast(facts: string, name: string, avoid: string[] = []): Promise<string> {
   const key = Deno.env.get("GEMINI_API_KEY");
+  const v3 = VOICES[0].model.includes("v3");
   const prompt = `You are Buzz, a savage, sarcastic bee who roasts college students for touching their phone during a group study session. A speaker reads your line out loud to the whole table.
 
 Write ONE roast, at most 25 words, using their name.
-Be brutal and funny about their focus, their phone habit and the scoreboard. Compare them to the others when it stings.
+This time, talk like ${pick(STYLES)}, and focus on ${pick(ANGLES)}.
+Be brutal and funny. Use the facts below.
 Rules: PG-13, no swear words, no slurs. Never mention race, gender, religion, sexuality, body, looks, health, money or family.
 Plain spoken text: no quotes, emojis or hashtags.
-Delivery: you may add one or two of these voice tags where they fit (they change HOW the line is said and are not read out):
-${TAGS.map(t => `[${t}]`).join(" ")}
-Example: [sarcastic] Oh wow, Alex. Two minutes. A new world record. [laughs]
-
+Sound effects: write one or two spoken sounds as words, like ${SOUNDS.slice().sort(() => Math.random() - 0.5).slice(0, 4).join(", ")}. Put one at the start or the end.
+${v3 ? `You may also add one voice tag that changes HOW it's said (not read out): ${TAGS.map(t => `[${t}]`).join(" ")}
+` : ""}Example (do not copy): Ooooh, Alex. Two minutes. A new world record in giving up. Hahaha!
+${avoid.length ? `Do NOT reuse the jokes or wording of these earlier roasts:\n${avoid.map(a => "- " + a).join("\n")}\n` : ""}
 Facts:
 ${facts}`;
 
@@ -79,7 +108,7 @@ ${facts}`;
           headers: { "Content-Type": "application/json", "x-goog-api-key": key },
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 1.1, maxOutputTokens: 2048,   // room in case it thinks anyway
+            generationConfig: { temperature: 1.3, maxOutputTokens: 2048,   // room in case it thinks anyway
                                 ...(thinking ? { thinkingConfig: { thinkingLevel: "minimal" } } : {}) },
           }),
         });
@@ -198,7 +227,8 @@ Deno.serve(async (req) => {
   }
 
   // ---------- 5. Write it, speak it ----------
-  const text = await writeRoast(facts, name);
+  const avoid = Array.isArray(body.avoid) ? body.avoid.filter((a: unknown) => typeof a === "string").slice(-6).map((a: string) => a.slice(0, 200)) : [];
+  const text = await writeRoast(facts, name, avoid);
   const audio = await speak(text);
   if (!audio) return json(req, { text: plain(text), problems });   // no voice: caller reads the text itself
 

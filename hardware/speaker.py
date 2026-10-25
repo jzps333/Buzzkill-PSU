@@ -98,6 +98,7 @@ def current_game():
 
 # ---------- AI roasts: one per pickup ----------
 # In teams, a pickup busts the whole team, and they all share the roast of whoever slipped (alarm_cause).
+recent = []      # last few roast lines, sent along so the next roast is different
 roasts = {}      # bust key -> "loading" | {"mp3": path, "text": ...} | {"text": ...} | {} (failed: built-in roast)
 
 
@@ -113,7 +114,7 @@ def bust_key(p, players):
 def fetch_roast(key, code, user_id):
     try:
         r = requests.post(f"{BASE}/functions/v1/roast", headers=HEADERS,
-                          json={"game": code, "user_id": user_id}, timeout=15)
+                          json={"game": code, "user_id": user_id, "avoid": recent[-6:]}, timeout=15)
         r.raise_for_status()
         text = unquote(r.headers.get("X-Roast-Text", ""))
         if r.headers.get("content-type", "").startswith("audio"):
@@ -122,6 +123,8 @@ def fetch_roast(key, code, user_id):
             roasts[key] = {"mp3": str(path), "text": text}
         else:
             roasts[key] = {"text": r.json().get("text")}      # no voice credits left: espeak reads it
+        if roasts[key].get("text"):
+            recent.append(roasts[key]["text"])
         log("AI roast:", roasts[key].get("text"))
     except Exception as e:
         log("AI roast failed, using a built-in one:", e)
