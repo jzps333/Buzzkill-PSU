@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buzzkill · Pick a bee</title>
+  <style>
+    :root { --cream: #FFFAEB; --ink: #1F1B16; --ink-2: #5E574B; --line: #EAE2CC; --honey: #F5D35A; --white: #fff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--cream); color: var(--ink); font: 500 16px/1.5 system-ui, -apple-system, sans-serif; }
+    main { width: min(1100px, 100% - 32px); margin: 32px auto 80px; }
+    h1 { margin: 0 0 4px; font-size: 32px; }
+    p.sub { margin: 0 0 24px; color: var(--ink-2); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .card { padding: 16px; border: 1px solid var(--line); border-radius: 20px; background: var(--white); text-align: center; }
+    .card.on { border: 3px solid var(--ink); }
+    .card h2 { margin: 6px 0 2px; font-size: 20px; }
+    .card p { margin: 0 0 12px; color: var(--ink-2); font-size: 14px; min-height: 42px; }
+    .stage { width: 200px; margin: 0 auto; }
+    .moods { display: flex; justify-content: center; gap: 6px; margin-bottom: 12px; }
+    .moods button { border: 1px solid var(--line); background: var(--cream); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+    .use { width: 100%; height: 44px; border: 0; border-radius: 12px; background: var(--ink); color: #fff; font: 700 15px system-ui; cursor: pointer; }
+    .card.on .use { background: var(--honey); color: var(--ink); }
+    a { color: inherit; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Pick Buzz's look</h1>
+    <p class="sub">The one you pick is used on every page, and follows you around the site. Move your mouse to see it fly.
+      <a href="/">Back to the site</a></p>
+    <div class="grid" id="grid"></div>
+  </main>
+
+  <script src="buzz.js"></script>
+  <script type="module">
+    import { mount, chosenDesign } from "./bee3d.js";
+
+    const DESIGNS = [
+      ["cute", "Cute", "The site's Buzz: round head, big eyes, no accessories."],
+      ["honeybee", "Honeybee", "A real honeybee: fuzzy, striped, veined wings. Less cartoon, more nature doc."],
+      ["sleek", "Sleek", "Clean and glossy, like an app icon. Minimal face."],
+      ["classic", "Classic", "The current Buzz: cap, glasses, pencil."],
+    ];
+    const current = chosenDesign();
+    const grid = document.getElementById("grid");
+
+    for (const [id, name, about] of DESIGNS) {
+      const card = document.createElement("div");
+      card.className = "card" + (id === current ? " on" : "");
+      const stage = document.createElement("div");
+      stage.className = "stage bz-bee";
+      const h = document.createElement("h2"); h.textContent = name;
+      const p = document.createElement("p"); p.textContent = about;
+      const moods = document.createElement("div"); moods.className = "moods";
+      for (const [label, worried, panic] of [["Happy", false, false], ["Worried", true, false], ["Busted", true, true]]) {
+        const b = document.createElement("button");
+        b.textContent = label;
+        b.onclick = () => { stage.classList.toggle("bz-mood-worried", worried); stage.classList.toggle("bz-panic", panic); };
+        moods.append(b);
+      }
+      const use = document.createElement("button");
+      use.className = "use";
+      use.textContent = id === current ? "Using this one" : "Use this one";
+      use.onclick = () => { location.href = "?bee=" + id; };
+      card.append(stage, h, p, moods, use);
+      grid.append(card);
+      mount(stage, { design: id });
+    }
+  </script>
+  <script type="module" src="companion.js"></script>
+</body>
+</html>

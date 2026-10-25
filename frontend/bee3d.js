@@ -1,13 +1,19 @@
 /*
-  Buzz in 3D (three.js). buzz.js loads this automatically and swaps the flat SVG for a live 3D bee.
-  If WebGL isn't available, the SVG stays.
+  Buzz in 3D (three.js). buzz.js loads this automatically and swaps the flat SVG for a live 3D bee,
+  and companion.js uses it for the bee that follows you around the site. No WebGL = the SVG stays.
 
-  mount(el)   draws Buzz in el and keeps him buzzing. He reads el's classes every frame:
-                bz-mood-worried  worried face (open mouth, brows up, darting eyes)
-                bz-panic         wings go crazy, he shakes
-              Returns { dispose() }.
+  mount(el, { design, follow })
+      draws Buzz in el and keeps him buzzing. He reads el's classes every frame:
+        bz-mood-worried  worried face (where the design has one), darting eyes
+        bz-panic         wings go crazy, he shakes
+      follow: true = he's the companion: always animating, turns to face where he flies (see steer)
+      Returns { dispose(), steer(vx, vy) }.
+
+  Designs (bee-designs.js): cute (the site's Buzz), honeybee, sleek, classic.
+  Pick one with ?bee=sleek in the address; it's remembered on this device.
 */
 import * as THREE from "./vendor/three.module.min.js";
+import { honeybee, sleek, cute } from "./bee-designs.js";
 
 const YELLOW = 0xffc93c, INK = 0x2b2118, WING = 0xe3f4ff, CHEEK = 0xff9aae, PENCIL = 0xffd25a;
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -45,7 +51,7 @@ function tube(points, radius) {
   return new THREE.Mesh(new THREE.TubeGeometry(curve, 20, radius, 8), toon(INK));
 }
 
-function buildBee() {
+export function classic() {
   const bee = new THREE.Group();
   const ink = toon(INK);
 
@@ -189,13 +195,27 @@ function buildBee() {
     wing.rotation.z = 0.5 * s;
     hinge.add(wing);
     bee.add(hinge);
-    wings.push({ hinge, side: s });
+    wings.push({ pose: f => hinge.rotation.set(0.2, s * (-0.35 + f * 0.55), 0) });
   }
 
-  return { bee, body, eyes, smile, gasp, brows, waving, wings, pencil };
+  return { bee, eyes, smile, gasp, brows, waving, wings, view: { z: 7.6, y: 0.3, lookY: 0.2, yaw: 0 } };
 }
 
-export function mount(el) {
+const DESIGNS = { honeybee, sleek, cute, classic };
+export const DESIGN_NAMES = Object.keys(DESIGNS);
+const DEFAULT_DESIGN = "cute";
+
+export function chosenDesign() {
+  const asked = new URLSearchParams(location.search).get("bee");
+  let saved = null;
+  try {
+    if (DESIGNS[asked]) localStorage.setItem("bz-design", asked);
+    saved = localStorage.getItem("bz-design");
+  } catch { /* private mode: just don't remember */ }
+  return DESIGNS[asked] ? asked : DESIGNS[saved] ? saved : DEFAULT_DESIGN;
+}
+
+export function mount(el, { design = chosenDesign(), follow = false } = {}) {
   const canvas = document.createElement("canvas");
   canvas.className = "bz-canvas";
   canvas.setAttribute("aria-hidden", "true");
@@ -206,17 +226,20 @@ export function mount(el) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xffe6b0, 1.4));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xffe6b0, 1.3));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.7);
   sun.position.set(2, 3, 4);
-  scene.add(sun);
+  const rim = new THREE.DirectionalLight(0xfff1c9, 0.9);
+  rim.position.set(-3, 2, -3);
+  scene.add(sun, rim);
 
+  const parts = (DESIGNS[design] || DESIGNS[DEFAULT_DESIGN])();
+  const view = parts.view;
   const camera = new THREE.PerspectiveCamera(30, 210 / 215, 0.1, 50);
-  camera.position.set(0, 0.3, 7.6);
-  camera.lookAt(0, 0.2, 0);
+  camera.position.set(0, view.y, view.z);
+  camera.lookAt(0, view.lookY, 0);
 
-  const parts = buildBee();
-  const rig = new THREE.Group();           // hover + sway happen on the rig, so the bee's own pose stays clean
+  const rig = new THREE.Group();           // hover + sway + turning happen on the rig, so the bee's own pose stays clean
   rig.add(parts.bee);
   scene.add(rig);
 
@@ -235,10 +258,14 @@ export function mount(el) {
   // Only animate while he's on screen and the tab is visible (saves battery on phones)
   let visible = true;
   const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; });
-  io.observe(el);
+  if (!follow) io.observe(el);
+
+  // Companion steering: which way he's flying
+  let vx = 0, vy = 0, facing = 1, yaw = view.yaw, pitch = 0, bank = 0;
 
   const seed = Math.random() * 100;
   let raf = 0, last = 0, nextBlink = 2 + Math.random() * 3, blink = 0, look = 0, lookTarget = 0, lookAt = 0;
+  const eyesX = parts.eyes ? parts.eyes.position.x : 0;
 
   function frame(ms) {
     raf = requestAnimationFrame(frame);
@@ -252,40 +279,56 @@ export function mount(el) {
     const panic = el.classList.contains("bz-panic");
     const calm = reduceMotion ? 0.25 : 1;
 
-    // Hover in a lazy figure-eight, turn a little so you can see he's 3D, plus a tiny buzz jitter
+    // Which way to face. In place: a slow look around. Following: turn toward where he's going.
+    let yawTarget = view.yaw + Math.sin(t * 0.6) * 0.45 * calm;
+    if (follow) {
+      const speed = Math.hypot(vx, vy);
+      if (Math.abs(vx) > 1.5) facing = Math.sign(vx);
+      if (parts.profile) yawTarget = facing * (speed > 2 ? 1.45 : view.yaw);
+      else yawTarget = Math.max(-0.9, Math.min(0.9, vx * 0.05)) + Math.sin(t * 0.6) * 0.2;
+      // nose down a little when he speeds up, bank into turns
+      const pitchTarget = Math.max(-0.35, Math.min(0.35, (parts.profile ? -1 : 1) * vy * 0.012 + (parts.profile ? 0 : speed * 0.006)));
+      pitch += (pitchTarget - pitch) * Math.min(1, dt * 6);
+      bank += (Math.max(-0.4, Math.min(0.4, -vx * 0.01)) - bank) * Math.min(1, dt * 6);
+    }
+    yaw += (yawTarget - yaw) * Math.min(1, dt * (follow ? 5 : 3));
+
+    // Hover in a lazy figure-eight, plus a tiny buzz jitter
     rig.position.set(Math.sin(t * 0.9) * 0.12 * calm, Math.sin(t * 1.8) * 0.12 * calm, 0);
-    rig.rotation.y = Math.sin(t * 0.6) * 0.45 * calm;
-    rig.rotation.z = Math.sin(t * 0.9) * 0.06 * calm;
+    rig.rotation.set(follow ? pitch : 0, yaw, follow ? bank : Math.sin(t * 0.9) * 0.06 * calm);
     const jitter = (panic ? 0.06 : 0.012) * calm;
     parts.bee.position.set((Math.random() - 0.5) * jitter, (Math.random() - 0.5) * jitter, 0);
     parts.bee.rotation.z = panic ? Math.sin(t * 40) * 0.08 : 0;
 
     // Wings: a fast blur of flapping. Panic = even faster
-    const speed = reduceMotion ? 8 : panic ? 70 : 38;
-    const flap = Math.sin(t * speed);
-    for (const w of parts.wings) w.hinge.rotation.set(0.2, w.side * (-0.35 + flap * 0.55), 0);
+    const flap = Math.sin(t * (reduceMotion ? 8 : panic ? 70 : 38));
+    for (const w of parts.wings) w.pose(flap);
 
     // Wave hello (happy), or flail (panic)
-    parts.waving.rotation.z = panic ? Math.sin(t * 25) * 0.25 : Math.sin(t * 3) * 0.12 * calm;
+    if (parts.waving) parts.waving.rotation.z = panic ? Math.sin(t * 25) * 0.25 : Math.sin(t * 3) * 0.12 * calm;
 
     // Face
-    parts.smile.visible = !worried;
-    parts.gasp.visible = parts.brows.visible = worried;
-    nextBlink -= dt;
-    if (nextBlink <= 0) { blink = 0.15; nextBlink = 2.5 + Math.random() * 3; }
-    blink = Math.max(0, blink - dt);
-    parts.eyes.scale.y = blink > 0 ? 0.15 : 1;
-    // Worried: eyes dart around
-    if (worried && t > lookAt) { lookTarget = (Math.random() - 0.5) * 0.12; lookAt = t + 0.4 + Math.random() * 0.6; }
-    if (!worried) lookTarget = 0;
-    look += (lookTarget - look) * Math.min(1, dt * 12);
-    parts.eyes.position.x = look;
+    if (parts.smile) parts.smile.visible = !worried;
+    if (parts.gasp) parts.gasp.visible = worried;
+    if (parts.brows) parts.brows.visible = worried;
+    if (parts.eyes && !parts.profile) {
+      nextBlink -= dt;
+      if (nextBlink <= 0) { blink = 0.15; nextBlink = 2.5 + Math.random() * 3; }
+      blink = Math.max(0, blink - dt);
+      parts.eyes.scale.y = blink > 0 ? 0.15 : 1;
+      // Worried: eyes dart around
+      if (worried && t > lookAt) { lookTarget = (Math.random() - 0.5) * 0.12; lookAt = t + 0.4 + Math.random() * 0.6; }
+      if (!worried) lookTarget = 0;
+      look += (lookTarget - look) * Math.min(1, dt * 12);
+      parts.eyes.position.x = eyesX + look;
+    }
 
     renderer.render(scene, camera);
   }
   raf = requestAnimationFrame(frame);
 
   return {
+    steer(x, y) { vx = x; vy = y; },
     dispose() {
       cancelAnimationFrame(raf);
       ro.disconnect();
